@@ -42,11 +42,17 @@ class ClassType:
 
 class FunctionType:
   
-    def __init__(self, name,  params, bodyScope):
+    def __init__(self, name):
       self.name = name
-      self.params = params
-      self.bodyScope = bodyScope # Scope of the function body
+      self.params = []
+      self.bodyScope = None
+    
+    def setBodyScope(self, bodyScope):
+      self.bodyScope = bodyScope
       bodyScope.reference = self # Save reference to class definition in his body scope
+
+    def addParam(self, param):
+      self.params.append(param)
 
     def __repr__(self) -> str:
       return f"FunctionType(name={self.name}, params={self.params})"
@@ -60,7 +66,7 @@ class ArrayType:
     def __repr__(self) -> str:
       return f"ArrayType(name={self.name}, elementType={self.elementType}, size={self.size})"
     
-class Object:
+class ObjectType:
   """
   Clase que empaqueta entidades como variables u objetos.
   """
@@ -74,7 +80,7 @@ class Object:
     self.type = type
 
   def __repr__(self):
-    return f"Object(name={self.name}, type={self.type})"
+    return f"ObjectType(name={self.name}, type={self.type})"
 
 class Scope:
   
@@ -88,7 +94,24 @@ class Scope:
     self.objects = []
 
     # Saves reference to class or function definition
-    self.reference = None 
+    self.reference = None
+
+
+  def addFunction(self, name):
+    functionObj = FunctionType(name)
+    self.functions.append(functionObj)
+
+  def addClass(self, name, bodyScope, parent = None):
+    classObj = ClassType(name, bodyScope, parent)
+    self.classes.append(classObj)
+
+  def addArray(self, name, elementType, size):
+    array = ArrayType(name, elementType, size)
+    self.arrays.append(array)
+
+  def addObject(self, name, type):
+    object = ObjectType(name, type)
+    self.objects.append(object)
 
   def __repr__(self):
         return f"Scope(level={self.level}, functions={self.functions}, classes={self.classes}, arrays={self.arrays}, objects={self.objects})"
@@ -123,8 +146,28 @@ class SymbolTable:
     Crea una definición de clase, guardando el nombre, el bodyScope (scope propio de la clase)
     y el padre de la clase (si es que tiene)
     """
-    classObj = ClassType(name, bodyScope, parent)
-    SymbolTable.currentScope.classes.append(classObj)
+    SymbolTable.currentScope.addClass(name, bodyScope, parent = None)
+
+  @staticmethod
+  def addFunctionToCurrentScope(name):
+    """
+    Crea una definición de función, guardando el nombre.
+    Los parámetros y el bodyScope se agregan con setters.
+    """
+    SymbolTable.currentScope.addFunction(name)
+
+  def addObjectToCurrentScope(name, type):
+    """
+    Crea una definición de objeto, guardando el nombre y el tipo.
+    """
+    SymbolTable.currentScope.addObject(name, type)
+
+
+  def addArrayToCurrentScope(name, elementType, size):
+    """
+    Crea una definición de array, guardando el nombre, el tipo de los elementos y el tamaño (en unidades de elementos).
+    """
+    SymbolTable.currentScope.addArray(name, elementType, size)
 
   @staticmethod
   def isClassScope():
