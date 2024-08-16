@@ -37,5 +37,11 @@ def main():
     walker = ParseTreeWalker()
     walker.walk(semantic_checker, tree)
 
+    # Imprimir errores
+    if len(semantic_checker.errors) > 0:
+        print("Errores semánticos:")
+        for error in semantic_checker.errors:
+            print(error)
+
 if __name__ == '__main__':
     main()
