@@ -1,7 +1,7 @@
 from antlr4 import *
 from antlr.CompiscriptListener import CompiscriptListener
 from antlr.CompiscriptParser import CompiscriptParser
-from SymbolTable import SymbolTable, TypesNames, primitiveTypes
+from SymbolTable import SymbolTable, TypesNames, primitiveTypes, FunctionType
 from SemanticError import SemanticError
 
 class SemanticChecker(CompiscriptListener):
@@ -20,6 +20,7 @@ class SemanticChecker(CompiscriptListener):
         Guarda una nueva clase en el scope actual, creando y cambiando al scope del cuerpo de la 
         clase. Si la clase tiene una clase padre, verifica que exista en la tabla de símbolos.
         """
+        super().enterClassDecl(ctx)
 
         # Obtener el nombre de la clase y clase heredada
         identifiers = [child for child in ctx.children 
@@ -54,6 +55,8 @@ class SemanticChecker(CompiscriptListener):
       """
       Salir del scope de la clase
       """
+      super().exitClassDecl(ctx)
+
       # Volver al scope padre
       SymbolTable.returnToParentScope()
 
@@ -62,6 +65,8 @@ class SemanticChecker(CompiscriptListener):
       """
       Agregar función al scope actual
       """
+      super().enterFunction(ctx)
+
       for child in ctx.children:
         if isinstance(child, tree.Tree.TerminalNodeImpl):
           if child.symbol.type == CompiscriptParser.IDENTIFIER:
@@ -73,6 +78,8 @@ class SemanticChecker(CompiscriptListener):
       """
       Agregar parámetros a la definición de la función
       """
+      super().enterParameters(ctx)
+
       functionDef = SymbolTable.currentScope.functions[-1]
 
       for child in ctx.children:
@@ -87,6 +94,8 @@ class SemanticChecker(CompiscriptListener):
       Crear un nuevo scope para el bloque y cambiar al scope del bloque
       Si es un bloque de una función, agregar los parámetros al scope del bloque
       """
+      super().enterBlock(ctx)
+
       blockScope = SymbolTable.createScope()
 
       # Verificar si el scope corresponde a una función
@@ -108,12 +117,15 @@ class SemanticChecker(CompiscriptListener):
       """
       Salir del scope del bloque
       """
+      super().exitBlock(ctx)
+
       SymbolTable.returnToParentScope()
 
     def exitPrimary(self, ctx: CompiscriptParser.PrimaryContext):
       """
       Realiza las verificaciones y determina el tipo de los nodos primarios
       """
+      super().exitPrimary(ctx)
 
       superActive = False # Indica si el nodo previo fue el lexema "super"
 
@@ -127,24 +139,24 @@ class SemanticChecker(CompiscriptListener):
           column = token.column 
 
           if type == CompiscriptParser.NUMBER:
-            child.type = primitiveTypes[TypesNames.NUMBER]
+            ctx.type = primitiveTypes[TypesNames.NUMBER]
           elif type == CompiscriptParser.STRING:
-            child.type = primitiveTypes[TypesNames.STRING]
+            ctx.type = primitiveTypes[TypesNames.STRING]
           elif lexeme == "true" or lexeme == "false":
-            child.type = primitiveTypes[TypesNames.BOOL]
+            ctx.type = primitiveTypes[TypesNames.BOOL]
           elif lexeme == "nil":
-            child.type = primitiveTypes[TypesNames.NIL]
+            ctx.type = primitiveTypes[TypesNames.NIL]
           elif lexeme == "this":
             # Verificar si el scope actual es un método
             if SymbolTable.currentScope.isMethodScope():
               classScope = SymbolTable.currentScope.parent
               classDef = classScope.reference
-              child.type = classDef.getType()
+              ctx.type = classDef.getType()
               
             else:
               # error semántico
               error = SemanticError("La palabra reservada 'this' solo puede ser usado dentro de un método de una clase", line, column)
-              child.type = error
+              ctx.type = error
               self.addSemanticError(error)
 
           elif lexeme == "super":
@@ -169,7 +181,7 @@ class SemanticChecker(CompiscriptListener):
               error = SemanticError("La palabra reservada 'super' solo puede ser usado dentro de una clase.", line, column)  
           
             if error != None:
-              child.type = error
+              ctx.type = error
               self.addSemanticError(error)
               break
 
@@ -184,11 +196,11 @@ class SemanticChecker(CompiscriptListener):
 
             elemType = parentClassScope.getElementType(lexeme, searchInParentScopes=False, searchInParentClasses=False)
             if elemType != None:
-              child.type = elemType
+              ctx.type = elemType
             else:
               # error semántico
               error = SemanticError(f"El atributo {lexeme} no existe en la clase padre.", line, column)
-              child.type = error
+              ctx.type = error
               self.addSemanticError(error)
 
           
@@ -197,14 +209,221 @@ class SemanticChecker(CompiscriptListener):
             # Verificar si el identificador existe en el scope actual
             elemType = SymbolTable.currentScope.getElementType(lexeme)
             if elemType != None:
-              child.type = elemType
+              ctx.type = elemType
             else:
               # error semántico
               error = SemanticError(f"El identificador '{lexeme}' no ha sido definido.", line, column)
-              child.type = error
+              ctx.type = error
               self.addSemanticError(error)
 
           elif lexeme == "nil":
-            child.type = primitiveTypes[TypesNames.NIL]
+            ctx.type = primitiveTypes[TypesNames.NIL]
 
-          
+    def exitCall(self, ctx: CompiscriptParser.CallContext):
+      super().exitCall(ctx)
+
+      primary_name = None
+      node_type = None
+
+    
+      for child in ctx.getChildren():     
+        
+        if isinstance(child, CompiscriptParser.PrimaryContext):
+          # Obtener el tipo del nodo primario (identificador)
+          primary_context = ctx.primary()
+
+          node_type = primary_context.type
+          primary_name = child.getText()
+
+        elif isinstance(child, tree.Tree.TerminalNode):
+
+          token = child.getSymbol()
+          lexeme = child.getText()
+          line = token.line
+          column = token.column 
+
+          if lexeme == "(":
+
+            # Verificar si es una llamada a función
+            if not isinstance(node_type, SemanticError) and not isinstance(node_type, FunctionType):
+
+              # Error semántico, se está llamando a algo diferente a una función
+              error = SemanticError(f"El identificador {primary_name} no es una función.", line, column)
+              self.addSemanticError(error)
+              ctx.type = error
+              break
+            else:
+              # Obtener el tipo de retorno de la función
+              raise NotImplementedError("Obtener el tipo de retorno de la función")
+
+        
+      # asignar el tipo del nodo
+      ctx.type = node_type
+        
+
+    def exitUnary(self, ctx: CompiscriptParser.UnaryContext):
+      super().exitUnary(ctx)
+
+      child_type = None
+
+      for child in ctx.getChildren():
+        if not isinstance(child, tree.Tree.TerminalNode):
+          # Obtener el tipo del nodo hijo (unary o call)
+          child_type = child.type
+
+      # pendiente: verificar si el tipo es correcto para la operación
+
+      # Asignar mismo tipo a este nodo
+      ctx.type = child_type
+
+    
+    def exitFactor(self, ctx: CompiscriptParser.FactorContext):
+      super().exitFactor(ctx)
+
+      # Obtener el tipo de ambos nodos hijos
+      child1 = ctx.unary(0)
+      child1_type = child1.type if child1 else None
+
+      # Obtener el segundo hijo 'unary' si existe
+      child2 = ctx.unary(1)
+      child2_type = child2.type if child2 else None
+
+      # pendiente: verificar si el tipo es correcto para la operación
+
+
+      # Asignar mismo tipo a este nodo
+      ctx.type = child1_type
+
+    def exitTerm(self, ctx: CompiscriptParser.TermContext):
+      super().exitTerm(ctx)
+
+      # Obtener el tipo de ambos nodos hijos
+      child1 = ctx.factor(0)
+      child1_type = child1.type if child1 else None
+
+      child2 = ctx.factor(1)
+      child2_type = child2.type if child2 else None
+
+      # pendiente: verificar si el tipo es correcto para la operación
+
+      # Asignar mismo tipo a este nodo
+      ctx.type = child1_type
+
+    def exitComparison(self, ctx: CompiscriptParser.ComparisonContext):
+      super().exitComparison(ctx)
+
+      # Obtener el tipo de ambos nodos hijos
+      child1 = ctx.term(0)
+      child1_type = child1.type if child1 else None
+
+      child2 = ctx.term(1)
+      child2_type = child2.type if child2 else None
+
+      # pendiente: verificar si el tipo es correcto para la operación
+
+      # Asignar mismo tipo a este nodo
+      ctx.type = child1_type
+
+
+    def exitEquality(self, ctx: CompiscriptParser.EqualityContext):
+      super().exitEquality(ctx)
+
+      # Obtener el tipo de ambos nodos hijos
+      child1 = ctx.comparison(0)
+      child1_type = child1.type if child1 else None
+
+      child2 = ctx.comparison(1)
+      child2_type = child2.type if child2 else None
+
+      # pendiente: verificar si el tipo es correcto para la operación
+
+      # Asignar mismo tipo a este nodo
+      ctx.type = child1_type
+
+    def exitLogic_and(self, ctx: CompiscriptParser.Logic_andContext):
+      super().exitLogic_and(ctx)
+
+      # Obtener el tipo de ambos nodos hijos
+      child1 = ctx.equality(0)
+      child1_type = child1.type if child1 else None
+
+      child2 = ctx.equality(1)
+      child2_type = child2.type if child2 else None
+
+      # pendiente: verificar si el tipo es correcto para la operación
+
+      # Asignar mismo tipo a este nodo
+      ctx.type = child1_type
+
+    def exitLogic_or(self, ctx: CompiscriptParser.Logic_orContext):
+      super().exitLogic_or(ctx)
+
+      # Obtener el tipo de ambos nodos hijos
+      child1 = ctx.logic_and(0)
+      child1_type = child1.type if child1 else None
+
+      child2 = ctx.logic_and(1)
+      child2_type = child2.type if child2 else None
+
+      # pendiente: verificar si el tipo es correcto para la operación
+
+      # Asignar mismo tipo a este nodo
+      ctx.type = child1_type
+
+    def exitAssignment(self, ctx: CompiscriptParser.AssignmentContext):
+      super().exitAssignment(ctx)
+
+      if len(ctx.children) ==1:
+        # Solo es un nodo primario
+        ctx.type = ctx.logic_or().type
+        return
+
+      # Pendiente validación de primera producción
+
+    def exitExpression(self, ctx: CompiscriptParser.ExpressionContext):
+      super().exitExpression(ctx)
+
+      # Asignar tipo de nodo hijo
+      ctx.type = ctx.getChild(0).type
+
+
+    def exitExprStmt(self, ctx: CompiscriptParser.ExprStmtContext):
+      super().exitExprStmt(ctx)
+
+      # Asignar tipo de nodo hijo
+      ctx.type = ctx.expression().type
+
+    def exitVarDecl(self, ctx: CompiscriptParser.VarDeclContext):
+
+      """
+      Declaración de variables
+      """
+      super().exitVarDecl(ctx)
+
+      # Validar que el nombre de la variable no sea un erro léxico
+      if isinstance(ctx.IDENTIFIER(), tree.Tree.ErrorNodeImpl):
+        return # Saltar validaciones semánticas de asignación de variable
+      
+      # Obtener nombre de variable
+      identifierToken = ctx.IDENTIFIER().getSymbol()
+      identifierName = identifierToken.text
+
+      # Verificar si la variable ya ha sido declarada
+      if SymbolTable.currentScope.searchElement(identifierName):
+        # error semántico
+        error = SemanticError(f"La variable '{identifierName}' ya ha sido declarada.", identifierToken.line, identifierToken.column)
+        self.addSemanticError(error)
+        ctx.type = error
+        return
+      
+      # Obtener tipo de la variable
+      varType = None
+      if ctx.expression() != None:
+        varType = ctx.expression().type
+      else:
+        varType = primitiveTypes[TypesNames.NIL]
+
+      # Agregar variable al scope actual
+      SymbolTable.currentScope.addObject(identifierName, varType)
+      print(SymbolTable.str())
+

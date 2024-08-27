@@ -3,7 +3,6 @@ from abc import ABC, abstractmethod
 class TypesNames(Enum):
 
   NUMBER = "NUMBER"
-  CHAR = "char"
   BOOL = "bool"
   CLASS = "class"
   FUNCTION = "function"
@@ -31,8 +30,8 @@ class PrimitiveType(DataType):
     return f"PrimitiveType(name={self.name}, size={self.size})"
 
 primitiveTypes = {
-    TypesNames.NUMBER: PrimitiveType(TypesNames.NUMBER.value, 8),
-    TypesNames.CHAR: PrimitiveType(TypesNames.CHAR.value, 1),
+    TypesNames.NUMBER: PrimitiveType(TypesNames.NUMBER.value, 1),
+    TypesNames.STRING: PrimitiveType(TypesNames.STRING.value, 1),
     TypesNames.BOOL: PrimitiveType(TypesNames.BOOL.value, 1),
     TypesNames.NIL: PrimitiveType(TypesNames.NIL.value, 0),
 }
