@@ -427,3 +427,46 @@ class SemanticChecker(CompiscriptListener):
       SymbolTable.currentScope.addObject(identifierName, varType)
       print(SymbolTable.str())
 
+
+    def exitReturnStmt(self, ctx: CompiscriptParser.ReturnStmtContext):
+      super().exitReturnStmt(ctx)
+
+      # Objeto FunctionType que corresponde al scope función que contiene la sentencia 'return'
+      functionDef = SymbolTable.currentScope.getParentFunction()
+
+      if functionDef == None:
+        # error semántico
+        line = ctx.start.line
+        column = ctx.start.column
+        error = SemanticError("La sentencia 'return' solo puede ser usada dentro de una función.", line, column)
+        self.addSemanticError(error)
+        ctx.type = error
+        return
+      
+      # Obtener tipo de retorno de la función
+      # Si no tiene tipo de retorno, se asume que es nil
+      expression = ctx.expression()
+
+      if expression == None:
+        functionDef.setReturnType(primitiveTypes[TypesNames.NIL])
+        return
+      
+      # Obtener tipo de la expresión y asignar al tipo de retorno
+      functionDef.setReturnType(expression.type)
+
+      # Verificar si el token de retorno es igual a alguno de los parametros
+      # Si lo es, especificar que el retorno depende de ese parametro
+      returnToken = expression.getText()
+
+      for i in range(len(functionDef.params) - 1, -1, -1): # Dar prioridad a los últimos params
+        param = functionDef.params[i]
+        if param == returnToken:
+          functionDef.setParamDependencyIndex(i)
+          break
+  
+
+    def exitProgram(self, ctx: CompiscriptParser.ProgramContext):
+      super().exitProgram(ctx)
+      
+      print(SymbolTable.str())
+      print(SymbolTable.currentScope.functions[0].getReturnType((primitiveTypes[TypesNames.NIL],primitiveTypes[TypesNames.NIL], primitiveTypes[TypesNames.NUMBER])))
