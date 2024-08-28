@@ -256,7 +256,7 @@ class SemanticChecker(CompiscriptListener):
           if lexeme == "(":
 
             # Verificar si es una llamada a función
-            if not isinstance(node_type, SemanticError) and not isinstance(node_type, FunctionType):
+            if not isinstance(node_type, CompilerError) and not isinstance(node_type, FunctionType):
 
               # Error semántico, se está llamando a algo diferente a una función
               error = SemanticError(f"El identificador {primary_name} no es una función.", line, column)
@@ -265,7 +265,7 @@ class SemanticChecker(CompiscriptListener):
               break
             else:
               # Obtener el tipo de retorno de la función
-              raise NotImplementedError("Obtener el tipo de retorno de la función")
+              node_type = node_type.returnType
 
         
       # asignar el tipo del nodo
@@ -463,17 +463,8 @@ class SemanticChecker(CompiscriptListener):
       
       # Obtener tipo de la expresión y asignar al tipo de retorno
       functionDef.setReturnType(expression.type)
-
-      # Verificar si el token de retorno es igual a alguno de los parametros
-      # Si lo es, especificar que el retorno depende de ese parametro
-      returnToken = expression.getText()
-
-      for i in range(len(functionDef.params) - 1, -1, -1): # Dar prioridad a los últimos params
-        param = functionDef.params[i]
-        if param == returnToken:
-          functionDef.setParamDependencyIndex(i)
-          break
   
 
     def exitProgram(self, ctx: CompiscriptParser.ProgramContext):
       super().exitProgram(ctx)
+      print(SymbolTable.str())

@@ -61,7 +61,6 @@ class FunctionType:
       self.params = []
       self.bodyScope = None
       self.returnType = PrimitiveType(TypesNames.NIL.value, 0)
-      self.paramDependencyIndex = None # El tipo de retorno depende del tipo del parametro en este índice
     
     def setBodyScope(self, bodyScope):
       self.bodyScope = bodyScope
@@ -76,28 +75,11 @@ class FunctionType:
     def setReturnType(self, returnType):
       self.returnType = returnType
 
-    def getReturnType(self, paramsTypes):
-
-      if self.paramDependencyIndex is not None:
-
-        if self.paramDependencyIndex > len(paramsTypes) - 1:
-          # Si el tipo de retorno depende de un param que no fue proveido, retornar nil
-          return primitiveTypes[TypesNames.NIL]
-        else: 
-          # El tipo de retorno depende del tipo del parametro en el índice paramDependencyIndex
-          return paramsTypes[self.paramDependencyIndex].getType()
-      
-      # Si no hay dependencia de parámetros, retornar el tipo de retorno fijo
-      return self.returnType
-
-    def setParamDependencyIndex(self, index):
-      self.paramDependencyIndex = index
-
     def getParamsInReverseOrder(self):
       return self.params[::-1]
 
     def __repr__(self) -> str:
-      return f"FunctionType(name={self.name}, params={self.params}, returnType={self.returnType}, paramDependencyIndex={self.paramDependencyIndex})"
+      return f"FunctionType(name={self.name}, params={self.params}, returnType={self.returnType})"
 class ArrayType:
   
     def __init__(self, name, elementType, size):
