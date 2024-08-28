@@ -10,219 +10,273 @@ class CompiscriptListener(ParseTreeListener):
 
     # Enter a parse tree produced by CompiscriptParser#program.
     def enterProgram(self, ctx:CompiscriptParser.ProgramContext):
-        print("enter program")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#program.
     def exitProgram(self, ctx:CompiscriptParser.ProgramContext):
-        print("exit program")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#declaration.
     def enterDeclaration(self, ctx:CompiscriptParser.DeclarationContext):
-        print("enter declaration")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#declaration.
     def exitDeclaration(self, ctx:CompiscriptParser.DeclarationContext):
-        print("exit declaration")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#classDecl.
     def enterClassDecl(self, ctx:CompiscriptParser.ClassDeclContext):
-        print("enter class")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#classDecl.
     def exitClassDecl(self, ctx:CompiscriptParser.ClassDeclContext):
-        print("exit class decl")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#funDecl.
     def enterFunDecl(self, ctx:CompiscriptParser.FunDeclContext):
-        print("enter funDecl")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#funDecl.
     def exitFunDecl(self, ctx:CompiscriptParser.FunDeclContext):
-        print("exit funDecl")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#varDecl.
     def enterVarDecl(self, ctx:CompiscriptParser.VarDeclContext):
-        print("enter varDecl")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#varDecl.
     def exitVarDecl(self, ctx:CompiscriptParser.VarDeclContext):
-        print("exit varDecl")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#statement.
     def enterStatement(self, ctx:CompiscriptParser.StatementContext):
-        print("enter statement")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#statement.
     def exitStatement(self, ctx:CompiscriptParser.StatementContext):
-        print("exit statement")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#exprStmt.
     def enterExprStmt(self, ctx:CompiscriptParser.ExprStmtContext):
-        print("enter exprStmt")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#exprStmt.
     def exitExprStmt(self, ctx:CompiscriptParser.ExprStmtContext):
-        print("exit exprStmt")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#forStmt.
     def enterForStmt(self, ctx:CompiscriptParser.ForStmtContext):
-        print("enter forStmt")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#forStmt.
     def exitForStmt(self, ctx:CompiscriptParser.ForStmtContext):
-        print("exit forStmt")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#ifStmt.
     def enterIfStmt(self, ctx:CompiscriptParser.IfStmtContext):
-        print("enter ifStmt")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#ifStmt.
     def exitIfStmt(self, ctx:CompiscriptParser.IfStmtContext):
-        print("exit ifStmt")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#printStmt.
     def enterPrintStmt(self, ctx:CompiscriptParser.PrintStmtContext):
-        print("enter printStmt")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#printStmt.
     def exitPrintStmt(self, ctx:CompiscriptParser.PrintStmtContext):
-        print("exit printStmt")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#returnStmt.
     def enterReturnStmt(self, ctx:CompiscriptParser.ReturnStmtContext):
-        print("enter returnStmt")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#returnStmt.
     def exitReturnStmt(self, ctx:CompiscriptParser.ReturnStmtContext):
-        print("exit returnStmt")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#whileStmt.
     def enterWhileStmt(self, ctx:CompiscriptParser.WhileStmtContext):
-        print("enter whileStmt")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#whileStmt.
     def exitWhileStmt(self, ctx:CompiscriptParser.WhileStmtContext):
-        print("exit whileStmt")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#block.
     def enterBlock(self, ctx:CompiscriptParser.BlockContext):
-        print("enter block")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#block.
     def exitBlock(self, ctx:CompiscriptParser.BlockContext):
-        print("exit block")
+        pass
+
+
+    # Enter a parse tree produced by CompiscriptParser#funAnon.
+    def enterFunAnon(self, ctx:CompiscriptParser.FunAnonContext):
+        pass
+
+    # Exit a parse tree produced by CompiscriptParser#funAnon.
+    def exitFunAnon(self, ctx:CompiscriptParser.FunAnonContext):
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#expression.
     def enterExpression(self, ctx:CompiscriptParser.ExpressionContext):
-        print("enter expression")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#expression.
     def exitExpression(self, ctx:CompiscriptParser.ExpressionContext):
-        print("exit expression")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#assignment.
     def enterAssignment(self, ctx:CompiscriptParser.AssignmentContext):
-        print("enter assignment")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#assignment.
     def exitAssignment(self, ctx:CompiscriptParser.AssignmentContext):
-        print("exit assignment")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#logic_or.
     def enterLogic_or(self, ctx:CompiscriptParser.Logic_orContext):
-        print("enter logic_or")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#logic_or.
     def exitLogic_or(self, ctx:CompiscriptParser.Logic_orContext):
-        print("exit logic_or")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#logic_and.
     def enterLogic_and(self, ctx:CompiscriptParser.Logic_andContext):
-        print("enter logic_and")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#logic_and.
     def exitLogic_and(self, ctx:CompiscriptParser.Logic_andContext):
-        print("exit logic_and")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#equality.
     def enterEquality(self, ctx:CompiscriptParser.EqualityContext):
-        print("enter equality")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#equality.
     def exitEquality(self, ctx:CompiscriptParser.EqualityContext):
-        print("exit equality")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#comparison.
     def enterComparison(self, ctx:CompiscriptParser.ComparisonContext):
-        print("enter comparison")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#comparison.
     def exitComparison(self, ctx:CompiscriptParser.ComparisonContext):
-        print("exit comparison")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#term.
     def enterTerm(self, ctx:CompiscriptParser.TermContext):
-        print("enter term")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#term.
     def exitTerm(self, ctx:CompiscriptParser.TermContext):
-        print("exit term")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#factor.
     def enterFactor(self, ctx:CompiscriptParser.FactorContext):
-        print("enter factor")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#factor.
     def exitFactor(self, ctx:CompiscriptParser.FactorContext):
-        print("exit factor")
+        pass
+
+
+    # Enter a parse tree produced by CompiscriptParser#array.
+    def enterArray(self, ctx:CompiscriptParser.ArrayContext):
+        pass
+
+    # Exit a parse tree produced by CompiscriptParser#array.
+    def exitArray(self, ctx:CompiscriptParser.ArrayContext):
+        pass
+
+
+    # Enter a parse tree produced by CompiscriptParser#instantiation.
+    def enterInstantiation(self, ctx:CompiscriptParser.InstantiationContext):
+        pass
+
+    # Exit a parse tree produced by CompiscriptParser#instantiation.
+    def exitInstantiation(self, ctx:CompiscriptParser.InstantiationContext):
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#unary.
     def enterUnary(self, ctx:CompiscriptParser.UnaryContext):
-        print("enter unary")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#unary.
     def exitUnary(self, ctx:CompiscriptParser.UnaryContext):
-        print("exit unary")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#call.
     def enterCall(self, ctx:CompiscriptParser.CallContext):
-        print("enter call")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#call.
     def exitCall(self, ctx:CompiscriptParser.CallContext):
-        print("exit call")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#primary.
     def enterPrimary(self, ctx:CompiscriptParser.PrimaryContext):
-        print("enter primary")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#primary.
     def exitPrimary(self, ctx:CompiscriptParser.PrimaryContext):
-        print("exit primary")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#function.
     def enterFunction(self, ctx:CompiscriptParser.FunctionContext):
-        print("enter function")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#function.
     def exitFunction(self, ctx:CompiscriptParser.FunctionContext):
-        print("exit function")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#parameters.
     def enterParameters(self, ctx:CompiscriptParser.ParametersContext):
-        print("enter parameters")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#parameters.
     def exitParameters(self, ctx:CompiscriptParser.ParametersContext):
-        print("exit parameters")
+        pass
+
 
     # Enter a parse tree produced by CompiscriptParser#arguments.
     def enterArguments(self, ctx:CompiscriptParser.ArgumentsContext):
-        print("enter arguments")
+        pass
 
     # Exit a parse tree produced by CompiscriptParser#arguments.
     def exitArguments(self, ctx:CompiscriptParser.ArgumentsContext):
-        print("exit arguments")
+        pass
+
 
 
 del CompiscriptParser
