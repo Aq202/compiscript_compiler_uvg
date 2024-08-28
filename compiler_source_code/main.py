@@ -19,7 +19,8 @@ def create_tree(node, parser, parent=None):
     return tree_node
 
 def main():
-    input_stream = FileStream(sys.argv[1])
+    #input_stream = FileStream(sys.argv[1])
+    input_stream = FileStream("D:\diego\OneDrive - UVG\Documentos Universidad\Semestre 8\compiladores\proyecto\desarrollo\compiler_source_code\prueba.txt")
     lexer = CompiscriptLexer(input_stream)
     stream = CommonTokenStream(lexer)
     parser = CompiscriptParser(stream)

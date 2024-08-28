@@ -10,6 +10,7 @@ class TypesNames(Enum):
   STRING = "string"
   NIL = "nil"
   OBJECT = "object"
+  ANY = "any"
 
 class DataType(ABC):
     
@@ -34,6 +35,7 @@ primitiveTypes = {
     TypesNames.STRING: PrimitiveType(TypesNames.STRING.value, 1),
     TypesNames.BOOL: PrimitiveType(TypesNames.BOOL.value, 1),
     TypesNames.NIL: PrimitiveType(TypesNames.NIL.value, 0),
+    TypesNames.ANY: PrimitiveType(TypesNames.ANY.value, 0),
 }
 
 
@@ -144,8 +146,13 @@ class Scope:
 
 
   def addFunction(self, name):
+    """
+    Crea una definición de función y la agrega a la lista de funciones del scope
+    @return FunctionType. Retorna el objeto de la función creada
+    """
     functionObj = FunctionType(name)
     self.functions.insert(0, functionObj)
+    return functionObj
 
   def addClass(self, name, bodyScope, parent = None):
     classObj = ClassType(name, bodyScope, parent)
@@ -301,7 +308,7 @@ class SymbolTable:
     Crea una definición de función, guardando el nombre.
     Los parámetros y el bodyScope se agregan con setters.
     """
-    SymbolTable.currentScope.addFunction(name)
+    return SymbolTable.currentScope.addFunction(name)
 
   def addObjectToCurrentScope(name, type):
     """

@@ -2,7 +2,7 @@ from antlr4 import *
 from antlr.CompiscriptListener import CompiscriptListener
 from antlr.CompiscriptParser import CompiscriptParser
 from SymbolTable import SymbolTable, TypesNames, primitiveTypes, FunctionType
-from SemanticError import SemanticError
+from Errors import SemanticError, CompilerError
 
 class SemanticChecker(CompiscriptListener):
     
@@ -67,12 +67,25 @@ class SemanticChecker(CompiscriptListener):
       """
       super().enterFunction(ctx)
 
+      functionName = None
+
       for child in ctx.children:
         if isinstance(child, tree.Tree.TerminalNodeImpl):
           if child.symbol.type == CompiscriptParser.IDENTIFIER:
             functionName = child.getText()
-            SymbolTable.addFunctionToCurrentScope(functionName)
-            return
+            break
+
+          if child.symbol.getText() == "(":
+            # Ya se comienza a obtener parametros
+            break
+
+      # Si no se obtuvo el nombre de la función, se agrega el scrope pero con un error
+      if functionName == None:
+        functionName = CompilerError("No se ha definido el nombre de la función")
+
+      SymbolTable.currentScope.addFunction(functionName)
+      
+
 
     def enterParameters(self, ctx: CompiscriptParser.ParametersContext):
       """
@@ -105,7 +118,7 @@ class SemanticChecker(CompiscriptListener):
         
         # Agregar params al scope de la función
         for param in functionDef.params:
-          blockScope.addObject(param, None)
+          blockScope.addObject(param, primitiveTypes[TypesNames.ANY])
 
         # Guardar el scope del bloque en la definición de la función
         functionDef.setBodyScope(blockScope)
@@ -176,7 +189,6 @@ class SemanticChecker(CompiscriptListener):
                 error = SemanticError("La clase actual no tiene una clase padre.", line, column)
             
             else:
-              print(SymbolTable.str())
               # error semántico
               error = SemanticError("La palabra reservada 'super' solo puede ser usado dentro de una clase.", line, column)  
           
@@ -205,7 +217,6 @@ class SemanticChecker(CompiscriptListener):
 
           
           elif type == CompiscriptParser.IDENTIFIER:
-            
             # Verificar si el identificador existe en el scope actual
             elemType = SymbolTable.currentScope.getElementType(lexeme)
             if elemType != None:
@@ -425,7 +436,6 @@ class SemanticChecker(CompiscriptListener):
 
       # Agregar variable al scope actual
       SymbolTable.currentScope.addObject(identifierName, varType)
-      print(SymbolTable.str())
 
 
     def exitReturnStmt(self, ctx: CompiscriptParser.ReturnStmtContext):
@@ -467,6 +477,3 @@ class SemanticChecker(CompiscriptListener):
 
     def exitProgram(self, ctx: CompiscriptParser.ProgramContext):
       super().exitProgram(ctx)
-      
-      print(SymbolTable.str())
-      print(SymbolTable.currentScope.functions[0].getReturnType((primitiveTypes[TypesNames.NIL],primitiveTypes[TypesNames.NIL], primitiveTypes[TypesNames.NUMBER])))
