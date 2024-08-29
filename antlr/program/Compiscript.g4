@@ -17,7 +17,12 @@ statement       : exprStmt
                 | printStmt
                 | returnStmt
                 | whileStmt
+                | breakStmt
+                | continueStmt
                 | block ;
+
+breakStmt       : 'break' ';' ;
+continueStmt    : 'continue' ';' ;
 
 exprStmt        : expression ';' ;
 forStmt         : 'for' '(' (varDecl | exprStmt | ';') expression? ';' expression? ')' statement ;
