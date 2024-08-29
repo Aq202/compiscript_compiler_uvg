@@ -33,8 +33,7 @@ whileStmt       : 'while' '(' expression ')' statement ;
 block           : '{' declaration* '}' ;
 funAnon         : 'fun' '(' parameters? ')' block;
 
-expression      : assignment
-                | funAnon;
+expression      : assignment;
 
 assignment      : (call '.')? IDENTIFIER '=' assignment
                 | logic_or;
@@ -57,7 +56,8 @@ call            : primary ( '(' arguments? ')' | '.' IDENTIFIER | '[' expression
 primary         : 'true' | 'false' | 'nil' | 'this'
                 | NUMBER | STRING | IDENTIFIER | '(' expression ')'
                 | 'super' '.' IDENTIFIER 
-                | array | instantiation;
+                | array | instantiation
+                | funAnon;
 
 function        : IDENTIFIER '(' parameters? ')' block ;
 parameters      : IDENTIFIER ( ',' IDENTIFIER )* ;
