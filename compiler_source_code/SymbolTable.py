@@ -1,5 +1,6 @@
 from enum import Enum
 from abc import ABC, abstractmethod
+import uuid
 class TypesNames(Enum):
 
   NUMBER = "NUMBER"
@@ -11,6 +12,15 @@ class TypesNames(Enum):
   NIL = "nil"
   OBJECT = "object"
   ANY = "any"
+
+class ScopeType(Enum):
+  """
+  Tipos de bloques de código
+  """
+  FUNCTION = "function"
+  CLASS = "class"
+  LOOP = "loop"
+  CONDITIONAL = "conditional"
 
 class DataType(ABC):
     
@@ -117,9 +127,10 @@ class ObjectType:
 
 class Scope:
   
-  def __init__(self, parent, level):
+  def __init__(self, parent, level, type = None):
     self.parent = parent
     self.level = level
+    self.type = type
 
     self.functions = dict()
     self.classes = dict()
@@ -138,6 +149,24 @@ class Scope:
     functionObj = FunctionType(name)
     self.functions[name] = functionObj
     return functionObj
+  
+  def addAnonymousFunction(self):
+    """
+    Crea una definición de función anónima y la agrega a la lista de funciones del scope
+    @return FunctionType. Retorna el objeto de la función creada
+    """
+    functionObj = FunctionType(f"anonymous_{uuid.uuid4()}")
+    self.functions[functionObj.name] = functionObj
+    return functionObj
+  
+  def popLastFunction(self):
+    """
+    Elimina la última función definida en el scope actual y lo retorna.
+    """
+    if len(self.functions) == 0:
+      return None
+    return self.functions.popitem()[1]
+
 
   def addClass(self, name, bodyScope, parent = None):
     classObj = ClassType(name, bodyScope, parent)
@@ -337,20 +366,21 @@ class Scope:
 
 
   def __repr__(self):
-        return f"Scope(level={self.level}, functions={self.functions}, classes={self.classes}, arrays={self.arrays}, objects={self.objects})"
+        return f"Scope(level={self.level}, type={self.type}, functions={self.functions}, classes={self.classes}, arrays={self.arrays}, objects={self.objects})"
 
 class SymbolTable:
 
   globalScope = Scope(None, 0)
   
   currentScope = globalScope
+  nextBlockType = None
 
   @staticmethod
-  def createScope():
-    return Scope(SymbolTable.currentScope, SymbolTable.currentScope.level + 1)
+  def createScope(type):
+    return Scope(SymbolTable.currentScope, SymbolTable.currentScope.level + 1, type)
   
   @staticmethod
-  def createScopeAndSwitch():
+  def createScopeAndSwitch(type):
     newScope = SymbolTable.createScope()
     SymbolTable.setScope(newScope)
     return newScope

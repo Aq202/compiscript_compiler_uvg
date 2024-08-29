@@ -1,7 +1,7 @@
 from antlr4 import *
 from antlr.CompiscriptListener import CompiscriptListener
 from antlr.CompiscriptParser import CompiscriptParser
-from SymbolTable import SymbolTable, TypesNames, primitiveTypes, FunctionType, ClassType, PrimitiveType
+from SymbolTable import SymbolTable, TypesNames, primitiveTypes, FunctionType, ClassType, PrimitiveType, ScopeType
 from Errors import SemanticError, CompilerError
 
 class SemanticChecker(CompiscriptListener):
@@ -45,7 +45,7 @@ class SemanticChecker(CompiscriptListener):
             
 
         # Crear scope para la clase y añadirlo al scope actual
-        classScope = SymbolTable.createScope()
+        classScope = SymbolTable.createScope(ScopeType.CLASS)
         SymbolTable.addClassToCurrentScope(className, classScope, parentClassDef)
 
         # Cambiar al scope de la clase
@@ -84,6 +84,7 @@ class SemanticChecker(CompiscriptListener):
         functionName = CompilerError("No se ha definido el nombre de la función")
 
       SymbolTable.currentScope.addFunction(functionName)
+      SymbolTable.nextBlockType = ScopeType.FUNCTION # Indica que el siguiente bloque es el cuerpo de la función
       
 
 
@@ -110,7 +111,12 @@ class SemanticChecker(CompiscriptListener):
       """
       super().enterBlock(ctx)
 
-      blockScope = SymbolTable.createScope()
+      # Tipo de bloque, especificado en definición previa de fun, loop o if
+      blockType = SymbolTable.nextBlockType
+      blockScope = SymbolTable.createScope(blockType)
+
+      # Resetear tipo de bloque
+      SymbolTable.nextBlockType = None
 
       # Verificar si el scope corresponde a una función
       # Si la última función no tiene definido un bodyscope, se le asigna el scope del bloque
@@ -230,6 +236,10 @@ class SemanticChecker(CompiscriptListener):
           elif lexeme == "nil":
             ctx.type = primitiveTypes[TypesNames.NIL]
 
+        elif isinstance(child, CompiscriptParser.FunAnonContext):
+          # El nodo primario es una función anónima
+          ctx.type = child.type
+          
     def exitCall(self, ctx: CompiscriptParser.CallContext):
       super().exitCall(ctx)
 
@@ -274,7 +284,7 @@ class SemanticChecker(CompiscriptListener):
               break
 
             # Verificar si el identificador es null
-            if isinstance(node_type, PrimitiveType) and node_type.getType() == TypesNames.NIL:
+            if isinstance(node_type, PrimitiveType) and node_type.name == TypesNames.NIL.value:
               # error semántico
               error = SemanticError("No se puede acceder a un atributo de un objeto nulo.", line, column)
               self.addSemanticError(error)
@@ -549,6 +559,67 @@ class SemanticChecker(CompiscriptListener):
       functionDef.setReturnType(expression.type)
   
 
+    def enterIfStmt(self, ctx: CompiscriptParser.IfStmtContext):
+      super().enterIfStmt(ctx)
+
+      # Indicar que el siguiente bloque es un bloque condicional
+      SymbolTable.nextBlockType = ScopeType.CONDITIONAL
+
+    def exitIfStmt(self, ctx: CompiscriptParser.IfStmtContext):
+      super().exitIfStmt(ctx)
+
+
+      # Verificar que la condición sea de tipo booleano
+      condition = ctx.expression()
+      if condition != None: # Si es none, es un error léxico o sintactico, ignorar
+        
+        if not isinstance(condition.type, PrimitiveType) or \
+            (condition.type.name != TypesNames.BOOL.value and condition.type.name != TypesNames.ANY.value):
+          # error semántico, la condición no es de tipo booleano o any
+          line = condition.start.line
+          column = condition.start.column
+          error = SemanticError("La condición del if debe ser de tipo booleano.", line, column)
+          self.addSemanticError(error)
+          return
+
+    def enterWhileStmt(self, ctx: CompiscriptParser.WhileStmtContext):
+      super().enterWhileStmt(ctx)
+
+      # Indicar que el siguiente bloque es un loop
+      SymbolTable.nextBlockType = ScopeType.LOOP
+    
+    def exitWhileStmt(self, ctx: CompiscriptParser.WhileStmtContext):
+      super().exitWhileStmt(ctx)
+
+      # Verificar que la condición sea de tipo booleano
+      condition = ctx.expression()
+      if condition != None: # Si es none, es un error léxico o sintactico, ignorar
+        
+        if not isinstance(condition.type, PrimitiveType) or \
+            (condition.type.name != TypesNames.BOOL.value and condition.type.name != TypesNames.ANY.value):
+          # error semántico, la condición no es de tipo booleano o any
+          line = condition.start.line
+          column = condition.start.column
+          error = SemanticError("La condición del while debe ser de tipo booleano.", line, column)
+          self.addSemanticError(error)
+          return
+
+    def enterFunAnon(self, ctx: CompiscriptParser.FunAnonContext):
+      super().enterFunAnon(ctx)
+
+      # Crear y agregar una función anonima
+      SymbolTable.currentScope.addAnonymousFunction()
+      SymbolTable.nextBlockType = ScopeType.FUNCTION # Indica que el siguiente bloque es el cuerpo de la función
+
+    def exitFunAnon(self, ctx: CompiscriptParser.FunAnonContext):
+      super().exitFunAnon(ctx)
+
+      # Retornar el tipo de la función (última creada) y eliminar de la tabla de símbolos
+      functionDef = SymbolTable.currentScope.popLastFunction()
+      ctx.type = functionDef.getType()
+
     def exitProgram(self, ctx: CompiscriptParser.ProgramContext):
       super().exitProgram(ctx)
       print(SymbolTable.str())
+
+    
