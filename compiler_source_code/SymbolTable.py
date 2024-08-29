@@ -109,6 +109,9 @@ class ObjectType:
   def getType(self):
     return self.type
 
+  def setType(self, type):
+    self.type = type
+
   def __repr__(self):
     return f"ObjectType(name={self.name}, type={self.type})"
 
@@ -118,10 +121,10 @@ class Scope:
     self.parent = parent
     self.level = level
 
-    self.functions = []
-    self.classes = []
-    self.arrays = []
-    self.objects = []
+    self.functions = dict()
+    self.classes = dict()
+    self.arrays = dict()
+    self.objects = dict()
 
     # Saves reference to class or function definition
     self.reference = None
@@ -133,20 +136,20 @@ class Scope:
     @return FunctionType. Retorna el objeto de la función creada
     """
     functionObj = FunctionType(name)
-    self.functions.insert(0, functionObj)
+    self.functions[name] = functionObj
     return functionObj
 
   def addClass(self, name, bodyScope, parent = None):
     classObj = ClassType(name, bodyScope, parent)
-    self.classes.insert(0, classObj)
+    self.classes[name] = classObj
 
   def addArray(self, name, elementType, size):
     array = ArrayType(name, elementType, size)
-    self.arrays.insert(0, array)
+    self.arrays[name] = array
 
   def addObject(self, name, type):
     object = ObjectType(name, type)
-    self.objects.insert(0, object)
+    self.objects[name] = object
 
   def searchElement(self, name, searchInParentScopes = True, searchInParentClasses = True):
     """
@@ -159,9 +162,14 @@ class Scope:
     while scope is not None:
 
       # Buscar en las listas de elementos
-      for element in scope.functions + scope.classes + scope.arrays + scope.objects:
-        if element.name == name:
-          return element
+      if name in scope.functions:
+        return scope.functions[name]
+      if name in scope.classes:
+        return scope.classes[name]
+      if name in scope.arrays:
+        return scope.arrays[name]
+      if name in scope.objects:
+        return scope.objects[name]
       
       # Buscar en la clase padre si es una clase
       if searchInParentClasses and scope.isClassScope():
@@ -190,6 +198,22 @@ class Scope:
     if element is None:
       return None
     return element.getType()
+  
+  def getObject(self, name):
+    """
+    Retorna el objeto de una variable en el scope actual o en scopes padres.
+    Si no lo encuentra retorna None
+    """
+    scope = self
+    while scope is not None:
+
+      # Buscar en las listas de variables (objetos)
+      if name in scope.objects:
+        return scope.objects[name]
+    
+      scope = scope.parent
+
+    return None
 
   def searchClass(self, name):
     """
@@ -233,22 +257,85 @@ class Scope:
     # Verificar que el scope padre sea una clase
     return self.parent.isClassScope()
 
-  def getParentFunction(self):
+  def getParentFunction(self, searchInParentScopes = True):
     """
     Obtiene la definición de la función padre (o del él mismo) del scope actual.
     Si no es un scope de función ni posee un scope padre que lo sea, retorna None.
+    Si searchInParentScopes no es True, solo se retorna la definición de la función del scope actual (si existe).
+    @param searchInParentScopes: Bool. Buscar en los scopes padres
     @return FunctionType
     """
     if self.isFunctionScope():
       return self.reference
     
+    if not searchInParentScopes:
+      return None
+
     # Verificar si es un scope hijo de una función
-    while (scope := self.parent) is not None:
+    scope = self
+    while (scope := scope.parent) is not None:
       if scope.isFunctionScope():
         return scope.reference
       
     return None
   
+  def getParentMethod(self, searchInParentScopes = True):
+    """
+    Obtiene la definición del método padre (o del él mismo) del scope actual.
+    Si no es un scope de método ni posee un scope padre que lo sea, retorna None.
+    Si searchInParentScopes no es True, solo se retorna la definición de la función del scope actual (si existe).
+    @param searchInParentScopes: Bool. Buscar en los scopes padres
+    @return FunctionType
+    """
+    if self.isMethodScope():
+      return self.reference
+
+    if not searchInParentScopes:
+      return None
+    
+    # Verificar si es un scope hijo de un método
+    scope = self
+    while (scope := scope.parent) is not None:
+      if scope.isMethodScope():
+        return scope.reference
+      
+    return None
+  
+  def getParentClass(self, searchInParentScopes = True):
+    """
+    Obtiene la definición de la clase padre (o del él mismo) del scope actual.
+    Si no es un scope de clase ni posee un scope padre que lo sea, retorna None.
+    Si searchInParentScopes no es True, solo se retorna la definición de la función del scope actual (si existe).
+    @param searchInParentScopes: Bool. Buscar en los scopes padres
+    @return ClassType
+    """
+    if self.isClassScope():
+      return self.reference
+    
+    if not searchInParentScopes:
+      return None
+
+    # Verificar si es un scope hijo de una clase
+    scope = self
+    while (scope := scope.parent) is not None:
+      if scope.isClassScope():
+        return scope.reference
+      
+    return None
+  
+  def getLastFunction(self):
+    """
+    Retorna la última función definida (si existe) en el scope actual.
+    Si no hay funciones, retorna None.
+
+    IMPORTANTE: Si una función es redefinida, el orden se mantiene siempre, esta no se coloca al final.
+    """
+    if len(self.functions) == 0:
+      return None
+    
+    return next(reversed(self.functions.values()))
+
+
   def __repr__(self):
         return f"Scope(level={self.level}, functions={self.functions}, classes={self.classes}, arrays={self.arrays}, objects={self.objects})"
 
@@ -271,6 +358,8 @@ class SymbolTable:
   @staticmethod
   def setScope(scope):
     SymbolTable.currentScope = scope
+    print("\n***** SCOPE MODIFICADO *****\n",SymbolTable.str(),"\n")
+
   
   @staticmethod
   def returnToParentScope():

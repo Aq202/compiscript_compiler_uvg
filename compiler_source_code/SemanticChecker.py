@@ -1,7 +1,7 @@
 from antlr4 import *
 from antlr.CompiscriptListener import CompiscriptListener
 from antlr.CompiscriptParser import CompiscriptParser
-from SymbolTable import SymbolTable, TypesNames, primitiveTypes, FunctionType
+from SymbolTable import SymbolTable, TypesNames, primitiveTypes, FunctionType, ClassType
 from Errors import SemanticError, CompilerError
 
 class SemanticChecker(CompiscriptListener):
@@ -93,7 +93,8 @@ class SemanticChecker(CompiscriptListener):
       """
       super().enterParameters(ctx)
 
-      functionDef = SymbolTable.currentScope.functions[-1]
+      # Obtener la definición de la función actual (la última agregada)
+      functionDef = SymbolTable.currentScope.getLastFunction()
 
       for child in ctx.children:
         if isinstance(child, tree.Tree.TerminalNodeImpl):
@@ -112,9 +113,9 @@ class SemanticChecker(CompiscriptListener):
       blockScope = SymbolTable.createScope()
 
       # Verificar si el scope corresponde a una función
-      if len(SymbolTable.currentScope.functions) > 0 \
-        and SymbolTable.currentScope.functions[-1].bodyScope == None:
-        functionDef = SymbolTable.currentScope.functions[-1]
+      # Si la última función no tiene definido un bodyscope, se le asigna el scope del bloque
+      functionDef = SymbolTable.currentScope.getLastFunction()
+      if functionDef != None and functionDef.bodyScope == None:
         
         # Agregar params al scope de la función
         for param in functionDef.params:
@@ -161,9 +162,8 @@ class SemanticChecker(CompiscriptListener):
             ctx.type = primitiveTypes[TypesNames.NIL]
           elif lexeme == "this":
             # Verificar si el scope actual es un método
-            if SymbolTable.currentScope.isMethodScope():
-              classScope = SymbolTable.currentScope.parent
-              classDef = classScope.reference
+            if SymbolTable.currentScope.getParentMethod() != None:
+              classDef = SymbolTable.currentScope.getParentClass()
               ctx.type = classDef.getType()
               
             else:
@@ -176,7 +176,7 @@ class SemanticChecker(CompiscriptListener):
 
             error = None
             # Verificar si el scope actual es una clase
-            if SymbolTable.currentScope.isMethodScope():
+            if SymbolTable.currentScope.getParentMethod() != None:
               
               # Verificar si la clase padre existe
               classScope = SymbolTable.currentScope.parent
@@ -263,7 +263,7 @@ class SemanticChecker(CompiscriptListener):
               self.addSemanticError(error)
               ctx.type = error
               break
-            else:
+            elif isinstance(node_type, FunctionType):
               # Obtener el tipo de retorno de la función
               node_type = node_type.returnType
 
@@ -384,12 +384,62 @@ class SemanticChecker(CompiscriptListener):
     def exitAssignment(self, ctx: CompiscriptParser.AssignmentContext):
       super().exitAssignment(ctx)
 
-      if len(ctx.children) ==1:
+      ctx.type = None
+
+      if ctx.children == None:
+        # No se proporcionó un valor para la asignación
+        return
+
+
+      if len(ctx.children) == 1:
         # Solo es un nodo primario
         ctx.type = ctx.logic_or().type
         return
+      
+      assignmentValueType = ctx.assignment().type
+      identifier = ctx.IDENTIFIER().getText() # identificador del atributo o variable
 
-      # Pendiente validación de primera producción
+      if ctx.call() != None:
+        # Es una asignación a un atributo de clase
+
+        receiverType = ctx.call().type # receiver = parte izq de: receiver.method_or_property()
+
+        if isinstance(receiverType, CompilerError):
+          # Si receiver es un error, solo ignorar
+          ctx.type = receiverType
+          return
+        
+        # Validar que el receiver sea un objeto de una clase
+        if not isinstance(receiverType, ClassType):
+          # error semántico
+          line = ctx.start.line
+          column = ctx.start.column
+          error = SemanticError("Solo se pueden asignar atributos a objetos de una clase.", line, column)
+          ctx.type = error
+          self.addSemanticError(error)
+          return
+
+        # Asignar el tipo del atributo en el bodyScope de la clase
+        
+        bodyScope = receiverType.bodyScope
+        bodyScope.addObject(identifier, assignmentValueType)
+      
+      else:
+        # Es una asignación a variable ya declarada
+        
+        objectRef = SymbolTable.currentScope.getObject(identifier)
+
+        # Verificar si el identificador existe en el scope actual
+        if objectRef == None:
+          # error semántico
+          line = ctx.start.line
+          column = ctx.start.column
+          error = SemanticError(f"El identificador '{identifier}' no ha sido declarado.", line, column)
+          ctx.type = error
+          self.addSemanticError(error)
+          return
+        
+        objectRef.setType(assignmentValueType)
 
     def exitExpression(self, ctx: CompiscriptParser.ExpressionContext):
       super().exitExpression(ctx)
