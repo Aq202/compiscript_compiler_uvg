@@ -222,7 +222,7 @@ class Scope:
     """
     scope = SymbolTable.currentScope
     while scope is not None:
-      for classObj in scope.classes:
+      for classObj in scope.classes.values():
         if classObj.name == name:
           return classObj
       scope = scope.parent

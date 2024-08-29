@@ -1,7 +1,7 @@
 from antlr4 import *
 from antlr.CompiscriptListener import CompiscriptListener
 from antlr.CompiscriptParser import CompiscriptParser
-from SymbolTable import SymbolTable, TypesNames, primitiveTypes, FunctionType, ClassType
+from SymbolTable import SymbolTable, TypesNames, primitiveTypes, FunctionType, ClassType, PrimitiveType
 from Errors import SemanticError, CompilerError
 
 class SemanticChecker(CompiscriptListener):
@@ -267,7 +267,38 @@ class SemanticChecker(CompiscriptListener):
               # Obtener el tipo de retorno de la función
               node_type = node_type.returnType
 
-        
+          elif lexeme == ".":
+            # Se está accediendo a un atributo de un objeto
+
+            if isinstance(node_type, CompilerError):
+              break
+
+            # Verificar si el identificador es null
+            if isinstance(node_type, PrimitiveType) and node_type.getType() == TypesNames.NIL:
+              # error semántico
+              error = SemanticError("No se puede acceder a un atributo de un objeto nulo.", line, column)
+              self.addSemanticError(error)
+              node_type = error
+              break
+            
+            if not isinstance(node_type, ClassType):
+              # error semántico
+              error = SemanticError(f"El identificador {primary_name} no es una clase.", line, column)
+              self.addSemanticError(error)
+              node_type = error
+              break
+
+          
+            # Obtener el atributo de la clase, de lo contrario retornar null
+            classScope = node_type.bodyScope
+            attribute = ctx.IDENTIFIER(0)
+
+            if attribute != None:
+              elemType = classScope.getElementType(attribute.getText(), searchInParentScopes=True, searchInParentClasses=True)
+
+              node_type = primitiveTypes[TypesNames.NIL] if elemType == None else elemType
+
+
       # asignar el tipo del nodo
       ctx.type = node_type
         
@@ -390,12 +421,15 @@ class SemanticChecker(CompiscriptListener):
         # No se proporcionó un valor para la asignación
         return
 
-
       if len(ctx.children) == 1:
         # Solo es un nodo primario
-        ctx.type = ctx.logic_or().type
+        ctx.type = ctx.logic_or().type if ctx.logic_or() != None else None
         return
       
+      if ctx.assignment() == None:
+        # No es una asignación
+        return
+
       assignmentValueType = ctx.assignment().type
       identifier = ctx.IDENTIFIER().getText() # identificador del atributo o variable
 
