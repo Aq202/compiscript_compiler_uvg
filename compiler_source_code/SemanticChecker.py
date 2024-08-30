@@ -540,8 +540,8 @@ class SemanticChecker(CompiscriptListener):
       identifierToken = ctx.IDENTIFIER().getSymbol()
       identifierName = identifierToken.text
 
-      # Verificar si la variable ya ha sido declarada
-      if SymbolTable.currentScope.searchElement(identifierName):
+      # Verificar si la variable ya ha sido declarada (exclusivamente en dicho scope)
+      if SymbolTable.currentScope.searchElement(identifierName, searchInParentScopes=False, searchInParentClasses=False):
         # error semántico
         error = SemanticError(f"La variable '{identifierName}' ya ha sido declarada.", identifierToken.line, identifierToken.column)
         self.addSemanticError(error)
