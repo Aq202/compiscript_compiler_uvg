@@ -21,6 +21,7 @@ class ScopeType(Enum):
   CLASS = "class"
   LOOP = "loop"
   CONDITIONAL = "conditional"
+  GLOBAL = "global"
 
 class DataType(ABC):
     
@@ -72,8 +73,16 @@ class UnionType(DataType):
   def __init__(self, *types):
     self.types = []
     for t in types:
-      if t not in self.types:
-        self.types.append(t)
+      if isinstance(t, UnionType):
+        # Si es una union, agregar todos los tipos de la union
+        for t2 in t.types:
+          self.addType(t2)
+      else:
+        self.addType(t)
+
+  def addType(self, type):
+    if type not in self.types:
+      self.types.append(type)
 
   def getType(self):
     return self
@@ -154,7 +163,8 @@ class FunctionType:
       self.name = name
       self.params = []
       self.bodyScope = None
-      self.returnType = PrimitiveType(TypesNames.NIL.value, 0)
+      self.returnType = None
+      self.blockReturnTypeChange = False
     
     def setBodyScope(self, bodyScope):
       self.bodyScope = bodyScope
@@ -169,8 +179,12 @@ class FunctionType:
     def equalsType(self, __class__):
       return __class__ == AnyType or isinstance(self, __class__)
     
-    def setReturnType(self, returnType):
+    def setReturnType(self, returnType, preventOverwrite = False):
+      if self.blockReturnTypeChange == True:
+        return
+      
       self.returnType = returnType
+      self.blockReturnTypeChange = preventOverwrite
 
     def getParamsInReverseOrder(self):
       return self.params[::-1]
@@ -227,7 +241,6 @@ class Scope:
 
     self.functions = dict()
     self.classes = dict()
-    self.arrays = dict()
     self.objects = dict()
 
     # Saves reference to class or function definition
@@ -265,17 +278,13 @@ class Scope:
     classObj = ClassType(name, bodyScope, parent)
     self.classes[name] = classObj
 
-  def addArray(self, name, elementType, size):
-    array = ArrayType(name, elementType, size)
-    self.arrays[name] = array
-
   def addObject(self, name, type):
     object = ObjectType(name, type)
     self.objects[name] = object
 
   def searchElement(self, name, searchInParentScopes = True, searchInParentClasses = True):
     """
-    Busca un elemento en el scope actual y padres (clase, funcion, array u objeto)
+    Busca un elemento en el scope actual y padres (clase, funcion u objeto)
     @param searchInParentScopes: Bool. Buscar en los scopes padres
     @param searchInParentClasses: Bool. Buscar en las clases padres si el scope actual es una clase
     @return Objeto del elemento buscado. Si no lo encuentra retorna None.
@@ -288,8 +297,6 @@ class Scope:
         return scope.functions[name]
       if name in scope.classes:
         return scope.classes[name]
-      if name in scope.arrays:
-        return scope.arrays[name]
       if name in scope.objects:
         return scope.objects[name]
       
@@ -457,13 +464,43 @@ class Scope:
     
     return next(reversed(self.functions.values()))
 
+  def isExecutionAmbiguous(self, elementStop):
+    """
+    Verifica si el punto de ejecución actual podría o no ejecutarse. Un punto de ejecución es 
+    ambiguo si se encuentra dentro de una función, condicional o loop.
+    @param elementStop. Se detiene la búsqueda si se encuentra la definición del elemento en un scope
+    o si el mismo scope hace referencia al elemento (es cuerpo de una clase o función)
+    Dicho scope ya no es tomado en cuenta para la verificación y si para ese momento no se ha encontrado
+    un scope de tipo FUNCTION, CONDITIONAL o LOOP, se retorna False.
+    """
+    scope = self
+    while scope is not None:
+
+      # verificar si el scope actual hace referencia al elemento (es su cuerpo)
+      if scope.reference == elementStop:
+        return False
+
+      # Verificar si scope actual contiene a elementStop
+      if elementStop is not None:
+        if elementStop.name in scope.functions and scope.functions[elementStop.name] == elementStop:
+          return False
+        if elementStop.name in scope.classes and scope.classes[elementStop.name] == elementStop:
+          return False
+        if elementStop.name in scope.objects and scope.objects[elementStop.name] == elementStop:
+          return False
+
+      if scope.type in [ScopeType.FUNCTION, ScopeType.CONDITIONAL, ScopeType.LOOP]:
+        return True
+      
+      scope = scope.parent
+    return False
 
   def __repr__(self):
-        return f"Scope(level={self.level}, type={self.type}, functions={self.functions}, classes={self.classes}, arrays={self.arrays}, objects={self.objects})"
+        return f"Scope(level={self.level}, type={self.type}, functions={self.functions}, classes={self.classes}, objects={self.objects})"
 
 class SymbolTable:
 
-  globalScope = Scope(None, 0)
+  globalScope = Scope(None, 0, ScopeType.GLOBAL)
   
   currentScope = globalScope
   nextBlockType = None
@@ -509,13 +546,6 @@ class SymbolTable:
     Crea una definición de objeto, guardando el nombre y el tipo.
     """
     SymbolTable.currentScope.addObject(name, type)
-
-
-  def addArrayToCurrentScope(name, elementType, size):
-    """
-    Crea una definición de array, guardando el nombre, el tipo de los elementos y el tamaño (en unidades de elementos).
-    """
-    SymbolTable.currentScope.addArray(name, elementType, size)
   
 
   @staticmethod

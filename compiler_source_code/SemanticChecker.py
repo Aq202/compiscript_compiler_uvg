@@ -1,7 +1,7 @@
 from antlr4 import *
 from antlr.CompiscriptListener import CompiscriptListener
 from antlr.CompiscriptParser import CompiscriptParser
-from SymbolTable import SymbolTable, TypesNames, FunctionType, ClassType, ScopeType, AnyType, NumberType, StringType, BoolType, NilType
+from SymbolTable import SymbolTable, TypesNames, FunctionType, ClassType, ScopeType, AnyType, NumberType, StringType, BoolType, NilType, UnionType
 from Errors import SemanticError, CompilerError
 
 class SemanticChecker(CompiscriptListener):
@@ -454,7 +454,7 @@ class SemanticChecker(CompiscriptListener):
           return
         
         # Validar que el receiver sea un objeto de una clase
-        if receiverType.equalsType(ClassType):
+        if not receiverType.equalsType(ClassType):
           # error semántico
           line = ctx.start.line
           column = ctx.start.column
@@ -462,10 +462,26 @@ class SemanticChecker(CompiscriptListener):
           ctx.type = error
           self.addSemanticError(error)
           return
+        
+        # Verificar si la ubicación de ejecución es ambigua (la asignación podría o no ejecutarse)
+        # Busca hasta encontrar el scope del método que contiene la asignación (si no es un método, parar con el scope de la clase)
+        methodDef = SymbolTable.currentScope.getParentMethod()
+        isAmbiguous = SymbolTable.currentScope.isExecutionAmbiguous(methodDef if methodDef != None else receiverType)
 
         # Asignar el tipo del atributo en el bodyScope de la clase
-        
         bodyScope = receiverType.bodyScope
+
+        # Si la ejecución es ambigua, hacer una union de tipos
+        if isAmbiguous:
+          previousType = bodyScope.getElementType(identifier, searchInParentScopes=False, searchInParentClasses=True)
+
+          if previousType != None:
+            # Obtener el tipo de la variable y hacer una unión de tipos (solo si ya había un tipo definido)
+            unionType = UnionType(previousType, assignmentValueType)
+            bodyScope.addObject(identifier, unionType)
+            return
+        
+        # La ejecución no es ambigua (o no había un tipo previo), se sobrescribe el tipo de la variable
         bodyScope.addObject(identifier, assignmentValueType)
       
       else:
@@ -483,7 +499,18 @@ class SemanticChecker(CompiscriptListener):
           self.addSemanticError(error)
           return
         
-        objectRef.setType(assignmentValueType)
+
+        # Verificar si la ubicación de ejecución es ambigua (la asignación podría o no ejecutarse)
+        # Busca hasta encontrar el scope que guarda el objeto
+        isAmbiguous = SymbolTable.currentScope.isExecutionAmbiguous(objectRef)
+
+        if isAmbiguous:
+          # Si es ambigua, hacer una unión de tipos
+          unionType = UnionType(objectRef.getType(), assignmentValueType)
+          objectRef.setType(unionType)
+        else:
+          # Si no es ambigua, sobrescribir el tipo de la variable
+          objectRef.setType(assignmentValueType)
 
     def exitExpression(self, ctx: CompiscriptParser.ExpressionContext):
       super().exitExpression(ctx)
@@ -555,9 +582,21 @@ class SemanticChecker(CompiscriptListener):
         functionDef.setReturnType(NilType())
         return
       
+      # Verificar si la ubicación de ejecución es ambigua (el return podría o no ejecutarse)
+      # Busca hasta encontrar el scope de la función que contiene la sentencia 'return'
+      isAmbiguous = SymbolTable.currentScope.isExecutionAmbiguous(functionDef)
+      
       # Obtener tipo de la expresión y asignar al tipo de retorno
-      functionDef.setReturnType(expression.type)
-  
+      if functionDef.returnType == None:
+        # Si el tipo de retorno no ha sido definido, asignar el tipo de la expresión
+        # Si la ejecución del return no es ambigua, evitar que el tipo de dato sea sobrescrito
+        functionDef.setReturnType(expression.type, preventOverwrite= not isAmbiguous)
+      else:
+        # Ya se ha definido un tipo de retorno
+        # Si no es igual, hacer una unión de tipos
+        if functionDef.returnType != expression.type:
+          unionType = UnionType(functionDef.returnType, expression.type)
+          functionDef.setReturnType(unionType)
 
     def enterIfStmt(self, ctx: CompiscriptParser.IfStmtContext):
       super().enterIfStmt(ctx)
@@ -649,5 +688,3 @@ class SemanticChecker(CompiscriptListener):
     def exitProgram(self, ctx: CompiscriptParser.ProgramContext):
       super().exitProgram(ctx)
       print(SymbolTable.str())
-
-    
