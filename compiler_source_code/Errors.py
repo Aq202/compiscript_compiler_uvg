@@ -2,6 +2,8 @@ class CompilerError(Exception):
     def __init__(self, message):
         self.message = message
 
+    def equalsType(self, __class__):
+        return isinstance(self, __class__)
 
     def __str__(self):
         return f"CompilerError(message={self.message!r})"

@@ -1,7 +1,7 @@
 from antlr4 import *
 from antlr.CompiscriptListener import CompiscriptListener
 from antlr.CompiscriptParser import CompiscriptParser
-from SymbolTable import SymbolTable, TypesNames, primitiveTypes, FunctionType, ClassType, PrimitiveType, ScopeType
+from SymbolTable import SymbolTable, TypesNames, FunctionType, ClassType, ScopeType, AnyType, NumberType, StringType, BoolType, NilType
 from Errors import SemanticError, CompilerError
 
 class SemanticChecker(CompiscriptListener):
@@ -125,7 +125,7 @@ class SemanticChecker(CompiscriptListener):
         
         # Agregar params al scope de la función
         for param in functionDef.params:
-          blockScope.addObject(param, primitiveTypes[TypesNames.ANY])
+          blockScope.addObject(param, AnyType())
 
         # Guardar el scope del bloque en la definición de la función
         functionDef.setBodyScope(blockScope)
@@ -159,13 +159,13 @@ class SemanticChecker(CompiscriptListener):
           column = token.column 
 
           if type == CompiscriptParser.NUMBER:
-            ctx.type = primitiveTypes[TypesNames.NUMBER]
+            ctx.type = NumberType()
           elif type == CompiscriptParser.STRING:
-            ctx.type = primitiveTypes[TypesNames.STRING]
+            ctx.type = StringType()
           elif lexeme == "true" or lexeme == "false":
-            ctx.type = primitiveTypes[TypesNames.BOOL]
+            ctx.type = BoolType()
           elif lexeme == "nil":
-            ctx.type = primitiveTypes[TypesNames.NIL]
+            ctx.type = NilType()
           elif lexeme == "this":
             # Verificar si el scope actual es un método
             if SymbolTable.currentScope.getParentMethod() != None:
@@ -234,7 +234,7 @@ class SemanticChecker(CompiscriptListener):
               self.addSemanticError(error)
 
           elif lexeme == "nil":
-            ctx.type = primitiveTypes[TypesNames.NIL]
+            ctx.type = NilType()
 
         elif isinstance(child, CompiscriptParser.FunAnonContext):
           # El nodo primario es una función anónima
@@ -266,32 +266,32 @@ class SemanticChecker(CompiscriptListener):
           if lexeme == "(":
 
             # Verificar si es una llamada a función
-            if not isinstance(node_type, CompilerError) and not isinstance(node_type, FunctionType):
+            if not node_type.equalsType(CompilerError) and not node_type.equalsType(FunctionType):
 
               # Error semántico, se está llamando a algo diferente a una función
               error = SemanticError(f"El identificador {primary_name} no es una función.", line, column)
               self.addSemanticError(error)
               ctx.type = error
               break
-            elif isinstance(node_type, FunctionType):
+            elif node_type.equalsType(FunctionType):
               # Obtener el tipo de retorno de la función
               node_type = node_type.returnType
 
           elif lexeme == ".":
             # Se está accediendo a un atributo de un objeto
 
-            if isinstance(node_type, CompilerError):
+            if node_type.equalsType(CompilerError):
               break
 
             # Verificar si el identificador es null
-            if isinstance(node_type, PrimitiveType) and node_type.name == TypesNames.NIL.value:
+            if node_type.equalsType(NilType):
               # error semántico
               error = SemanticError("No se puede acceder a un atributo de un objeto nulo.", line, column)
               self.addSemanticError(error)
               node_type = error
               break
             
-            if not isinstance(node_type, ClassType):
+            if not node_type.equalsType(ClassType):
               # error semántico
               error = SemanticError(f"El identificador {primary_name} no es una clase.", line, column)
               self.addSemanticError(error)
@@ -306,7 +306,7 @@ class SemanticChecker(CompiscriptListener):
             if attribute != None:
               elemType = classScope.getElementType(attribute.getText(), searchInParentScopes=True, searchInParentClasses=True)
 
-              node_type = primitiveTypes[TypesNames.NIL] if elemType == None else elemType
+              node_type = NilType() if elemType == None else elemType
 
 
       # asignar el tipo del nodo
@@ -448,13 +448,13 @@ class SemanticChecker(CompiscriptListener):
 
         receiverType = ctx.call().type # receiver = parte izq de: receiver.method_or_property()
 
-        if isinstance(receiverType, CompilerError):
+        if receiverType.equalsType(CompilerError):
           # Si receiver es un error, solo ignorar
           ctx.type = receiverType
           return
         
         # Validar que el receiver sea un objeto de una clase
-        if not isinstance(receiverType, ClassType):
+        if receiverType.equalsType(ClassType):
           # error semántico
           line = ctx.start.line
           column = ctx.start.column
@@ -526,7 +526,7 @@ class SemanticChecker(CompiscriptListener):
       if ctx.expression() != None:
         varType = ctx.expression().type
       else:
-        varType = primitiveTypes[TypesNames.NIL]
+        varType = NilType()
 
       # Agregar variable al scope actual
       SymbolTable.currentScope.addObject(identifierName, varType)
@@ -552,7 +552,7 @@ class SemanticChecker(CompiscriptListener):
       expression = ctx.expression()
 
       if expression == None:
-        functionDef.setReturnType(primitiveTypes[TypesNames.NIL])
+        functionDef.setReturnType(NilType())
         return
       
       # Obtener tipo de la expresión y asignar al tipo de retorno
@@ -573,8 +573,7 @@ class SemanticChecker(CompiscriptListener):
       condition = ctx.expression()
       if condition != None: # Si es none, es un error léxico o sintactico, ignorar
         
-        if not isinstance(condition.type, PrimitiveType) or \
-            (condition.type.name != TypesNames.BOOL.value and condition.type.name != TypesNames.ANY.value):
+        if not condition.type.equalsType(BoolType):
           # error semántico, la condición no es de tipo booleano o any
           line = condition.start.line
           column = condition.start.column
@@ -595,8 +594,7 @@ class SemanticChecker(CompiscriptListener):
       condition = ctx.expression()
       if condition != None: # Si es none, es un error léxico o sintactico, ignorar
         
-        if not isinstance(condition.type, PrimitiveType) or \
-            (condition.type.name != TypesNames.BOOL.value and condition.type.name != TypesNames.ANY.value):
+        if not condition.type.equalsType(BoolType):
           # error semántico, la condición no es de tipo booleano o any
           line = condition.start.line
           column = condition.start.column
@@ -632,12 +630,11 @@ class SemanticChecker(CompiscriptListener):
       for child in ctx.children:
         if isinstance(child, CompiscriptParser.ExpressionContext):
 
-          if isinstance(child.type, CompilerError):
+          if child.type.equalsType(CompilerError):
             # Si el tipo de la expresión es un error, ignorar
             return
 
-          if not isinstance(child.type, PrimitiveType) or \
-              (child.type.name != TypesNames.BOOL.value and child.type.name != TypesNames.ANY.value):
+          if not child.type.equalsType(BoolType):
             # error semántico, la condición no es de tipo booleano o any
             line = child.start.line
             column = child.start.column

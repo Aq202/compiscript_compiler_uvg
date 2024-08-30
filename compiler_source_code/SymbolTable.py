@@ -27,7 +27,67 @@ class DataType(ABC):
     @abstractmethod
     def getType(self):
         pass
+    
+    @abstractmethod
+    def equalsType(self, __class__):
+        pass
+    
+class NilType(DataType):
 
+  def __init__(self):
+    self.name = TypesNames.NIL.value
+    self.size = 0
+
+  def getType(self):
+    return self
+  
+  def equalsType(self, __class__):
+    return __class__ == NilType
+
+  def __eq__(self, other):
+    # Sobreescribir __eq__ para que todos los objetos de NilType sean iguales
+    return isinstance(other, NilType)
+  
+  def __repr__(self) -> str:
+    return f"NilType()"
+
+
+
+class AnyType(DataType):
+    
+  def __eq__(self, other):
+    # Sobreescribir __eq__ para que todos los objetos de AnyType sean iguales
+    return isinstance(other, AnyType)
+  
+  def getType(self):
+    return self
+  
+  def equalsType(self, __class__):
+    return  __class__ != NilType
+  
+  def __repr__(self) -> str:
+    return f"AnyType()"
+
+class UnionType(DataType):
+  def __init__(self, *types):
+    self.types = []
+    for t in types:
+      if t not in self.types:
+        self.types.append(t)
+
+  def getType(self):
+    return self
+  
+  def equalsType(self, __class__):
+    return __class__ == AnyType or any([t.isCompatible(__class__) for t in self.types])
+  
+  def includesType(self, type):
+    print([isinstance(typeObj, type) for typeObj in self.types])
+    return any(isinstance(typeObj, type) for typeObj in self.types)
+
+  def __repr__(self) -> str:
+    return f"UnionType({', '.join([str(t) for t in self.types])})"
+    
 class PrimitiveType(DataType):
 
   def __init__(self, name, size):
@@ -39,14 +99,34 @@ class PrimitiveType(DataType):
 
   def __repr__(self) -> str:
     return f"PrimitiveType(name={self.name}, size={self.size})"
+  
+  def equalsType(self, __class__):
+    return __class__ == AnyType or isinstance(self, __class__)
+  
 
-primitiveTypes = {
-    TypesNames.NUMBER: PrimitiveType(TypesNames.NUMBER.value, 1),
-    TypesNames.STRING: PrimitiveType(TypesNames.STRING.value, 1),
-    TypesNames.BOOL: PrimitiveType(TypesNames.BOOL.value, 1),
-    TypesNames.NIL: PrimitiveType(TypesNames.NIL.value, 0),
-    TypesNames.ANY: PrimitiveType(TypesNames.ANY.value, 0),
-}
+class NumberType(PrimitiveType):
+  def __init__(self):
+    super().__init__(TypesNames.NUMBER.value, 1)
+
+  def __eq__(self, other):
+    # Sobreescribir __eq__ para que todos los objetos de NumberType sean iguales
+    return isinstance(other, NumberType)
+  
+class StringType(PrimitiveType):
+  def __init__(self):
+    super().__init__(TypesNames.STRING.value, 1)
+
+  def __eq__(self, other):
+    # Sobreescribir __eq__ para que todos los objetos de StringType sean iguales
+    return isinstance(other, StringType) 
+
+class BoolType(PrimitiveType):
+  def __init__(self):
+    super().__init__(TypesNames.BOOL.value, 1)
+
+  def __eq__(self, other):
+    # Sobreescribir __eq__ para que todos los objetos de BoolType sean iguales
+    return isinstance(other, BoolType)
 
 
 class ClassType(DataType):
@@ -58,6 +138,10 @@ class ClassType(DataType):
 
     bodyScope.reference = self # Save reference to class definition in his body scope
 
+  def equalsType(self, __class__):
+    # Para clases, solo se compara si son exactamente iguales
+    return __class__ == ClassType
+  
   def getType(self):
     return self
     
@@ -82,6 +166,9 @@ class FunctionType:
     def getType(self):
       return self
     
+    def equalsType(self, __class__):
+      return __class__ == AnyType or isinstance(self, __class__)
+    
     def setReturnType(self, returnType):
       self.returnType = returnType
 
@@ -99,6 +186,9 @@ class ArrayType:
 
     def getType(self):
       self
+
+    def equalsType(self, __class__):
+      return __class__ == AnyType or isinstance(self, __class__)
 
     def __repr__(self) -> str:
       return f"ArrayType(name={self.name}, elementType={self.elementType}, size={self.size})"
@@ -118,6 +208,9 @@ class ObjectType:
 
   def getType(self):
     return self.type
+
+  def equalsType(self, __class__):
+    return __class__ == AnyType or isinstance(self.type, __class__)
 
   def setType(self, type):
     self.type = type
