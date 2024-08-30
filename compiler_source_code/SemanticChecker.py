@@ -239,7 +239,7 @@ class SemanticChecker(CompiscriptListener):
         elif isinstance(child, CompiscriptParser.FunAnonContext):
           # El nodo primario es una función anónima
           ctx.type = child.type
-          
+
     def exitCall(self, ctx: CompiscriptParser.CallContext):
       super().exitCall(ctx)
 
@@ -617,6 +617,37 @@ class SemanticChecker(CompiscriptListener):
       # Retornar el tipo de la función (última creada) y eliminar de la tabla de símbolos
       functionDef = SymbolTable.currentScope.popLastFunction()
       ctx.type = functionDef.getType()
+
+    def enterForStmt(self, ctx: CompiscriptParser.ForStmtContext):
+      super().enterForStmt(ctx)
+
+      # Indicar que el siguiente bloque es un loop
+      SymbolTable.nextBlockType = ScopeType.LOOP
+
+
+    def exitForStmt(self, ctx: CompiscriptParser.ForStmtContext):
+      super().exitForStmt(ctx)
+
+      # Verificar que segunda expresión sea de tipo booleano
+      for child in ctx.children:
+        if isinstance(child, CompiscriptParser.ExpressionContext):
+
+          if isinstance(child.type, CompilerError):
+            # Si el tipo de la expresión es un error, ignorar
+            return
+
+          if not isinstance(child.type, PrimitiveType) or \
+              (child.type.name != TypesNames.BOOL.value and child.type.name != TypesNames.ANY.value):
+            # error semántico, la condición no es de tipo booleano o any
+            line = child.start.line
+            column = child.start.column
+            error = SemanticError("La condición del for debe ser de tipo booleano.", line, column)
+            self.addSemanticError(error)
+            return
+        elif child.getText() == ";":
+          # El punto y coma de la primera expresión no es un nodo (va incluido en la expresión como tal)
+          # Cuando se encuentra un nodo terminal con ;, significa que ya se ha pasado la primera expresión
+          return
 
     def exitProgram(self, ctx: CompiscriptParser.ProgramContext):
       super().exitProgram(ctx)
