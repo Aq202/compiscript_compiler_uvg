@@ -154,6 +154,11 @@ class ClassType(DataType):
   
   def getType(self):
     return self
+  
+  def getParentScope(self):
+    if self.parent is None:
+      return None
+    return self.parent.bodyScope
     
   def __repr__(self) -> str:
     return f"ClassType(name={self.name}, parent={self.parent})"
@@ -246,14 +251,14 @@ class Scope:
     self.level = level
     self.type = type
 
-    self.functions = dict()
-    self.classes = dict()
-    self.objects = dict()
-    self.parameters = dict() # Parámetros de una función
+    self.elements = dict()
+    self.properties = dict()
+
+  
 
     # Variables heredadas de un scope padre. Se agregan cuando se modifica el valor de una variable en un scope hijo.
     self.objectInheritances = dict()
-    self.parameterInheritances = dict()
+    self.propertyInheritances = dict()
 
     # Saves reference to class or function definition
     self.reference = None
@@ -262,10 +267,17 @@ class Scope:
   def addFunction(self, name):
     """
     Crea una definición de función y la agrega a la lista de funciones del scope
+    Si el scope actual es una clase, la función se agrega a la lista de métodos de la clase.
     @return FunctionType. Retorna el objeto de la función creada
     """
     functionObj = FunctionType(name)
-    self.functions[name] = functionObj
+
+    if self.type == ScopeType.CLASS:
+      self.properties[name] = functionObj
+    else:
+      self.elements[name] = functionObj
+
+      
     return functionObj
   
   def addAnonymousFunction(self):
@@ -274,29 +286,32 @@ class Scope:
     @return FunctionType. Retorna el objeto de la función creada
     """
     functionObj = FunctionType(f"anonymous_{uuid.uuid4()}")
-    self.functions[functionObj.name] = functionObj
+    self.elements[functionObj.name] = functionObj
     return functionObj
   
   def popLastFunction(self):
     """
     Elimina la última función definida en el scope actual y lo retorna.
     """
-    if len(self.functions) == 0:
+    if len(self.elements) == 0:
       return None
-    return self.functions.popitem()[1]
+    
+    for key in reversed(self.elements.keys()):
+      if isinstance(self.elements[key], FunctionType):
+        return self.elements.pop(key)
 
 
   def addClass(self, name, bodyScope, parent = None):
     classObj = ClassType(name, bodyScope, parent)
-    self.classes[name] = classObj
+    self.elements[name] = classObj
 
   def addObject(self, name, type):
     object = ObjectType(name, type)
-    self.objects[name] = object
+    self.elements[name] = object
 
-  def addParameter(self, name, type):
+  def addProperty(self, name, type):
     object = ObjectType(name, type)
-    self.parameters[name] = object
+    self.properties[name] = object
 
   def modifyInheritedObjectType(self, originalObject, newType):
     """
@@ -311,18 +326,18 @@ class Scope:
 
       self.objectInheritances[originalObject.name] = copy
 
-  def modifyInheritedParameterType(self, originalParam, newType):
+  def modifyInheritedPropertyType(self, originalParam, newType):
     """
     Crea una copia de de un objeto heredado en un scope hijo para modificar su tipo.
     """
-    if originalParam.name in self.parameterInheritances:
-      self.parameterInheritances[originalParam.name].setType(newType)
+    if originalParam.name in self.propertyInheritances:
+      self.propertyInheritances[originalParam.name].setType(newType)
     else:
       copy = deepcopy(originalParam)
       copy.setType(newType)
       copy.setReference(originalParam)
 
-      self.parameterInheritances[originalParam.name] = copy
+      self.propertyInheritances[originalParam.name] = copy
 
   def searchElement(self, name, searchInParentScopes = True, searchInParentClasses = True):
     """
@@ -335,12 +350,8 @@ class Scope:
     while scope is not None:
 
       # Buscar en las listas de elementos
-      if name in scope.functions:
-        return scope.functions[name]
-      if name in scope.classes:
-        return scope.classes[name]
-      if name in scope.objects:
-        return scope.objects[name]
+      if name in scope.elements:
+        return scope.elements[name]
       if name in scope.objectInheritances:
         return scope.objectInheritances[name]
       
@@ -381,8 +392,8 @@ class Scope:
     while scope is not None:
 
       # Buscar en las listas de variables (objetos)
-      if name in scope.objects:
-        return scope.objects[name]
+      if name in scope.elements and isinstance(scope.elements[name], ObjectType):
+        return scope.elements[name]
       
       if name in scope.objectInheritances:
         return scope.objectInheritances[name]
@@ -394,22 +405,23 @@ class Scope:
 
     return None
   
-  def getParameter(self, name, searchInParentScopes = True):
+  def getProperty(self, name, searchInParentScopes = True):
     """
-    Retorna el objeto de una variable en el scope actual o en scopes padres.
+    Retorna el objeto de un parametro en el scope actual o en scopes padres.
+    Al finalizar la búsqueda en el primer scope de tipo CLASS, detiene la búsqueda.
     Si no lo encuentra retorna None
     """
     scope = self
     while scope is not None:
 
-      # Buscar en las listas de variables (objetos)
-      if name in scope.parameters:
-        return scope.parameters[name]
+      # Buscar en las listas de parametros (solo para scope de clase)
+      if name in scope.properties:
+        return scope.properties[name]
       
-      if name in scope.parameterInheritances:
-        return scope.parameterInheritances[name]
+      if name in scope.propertyInheritances:
+        return scope.propertyInheritances[name]
 
-      if not searchInParentScopes:
+      if not searchInParentScopes or scope.type == ScopeType.CLASS:
         break
 
       scope = scope.parent
@@ -423,8 +435,8 @@ class Scope:
     """
     scope = SymbolTable.currentScope
     while scope is not None:
-      for classObj in scope.classes.values():
-        if classObj.name == name:
+      for classObj in scope.elements.values():
+        if isinstance(classObj, ClassType) and classObj.name == name:
           return classObj
       scope = scope.parent
 
@@ -527,14 +539,21 @@ class Scope:
   def getLastFunction(self):
     """
     Retorna la última función definida (si existe) en el scope actual.
+    Si el scope es de tipo CLASS devuelve las funciones definidas como propiedades.
     Si no hay funciones, retorna None.
 
     IMPORTANTE: Si una función es redefinida, el orden se mantiene siempre, esta no se coloca al final.
     """
-    if len(self.functions) == 0:
+    scopeElements = self.elements
+    if self.type == ScopeType.CLASS:
+      scopeElements = self.properties
+
+    if len(scopeElements) == 0:
       return None
     
-    return next(reversed(self.functions.values()))
+    for elem in reversed(scopeElements.values()):
+      if isinstance(elem, FunctionType):
+        return elem
 
   def isExecutionAmbiguous(self, elementStop):
     """
@@ -544,6 +563,9 @@ class Scope:
     o si el mismo scope hace referencia al elemento (es cuerpo de una clase o función)
     Dicho scope ya no es tomado en cuenta para la verificación y si para ese momento no se ha encontrado
     un scope de tipo FUNCTION, CONDITIONAL o LOOP, se retorna False.
+    
+    ElementStop no puede ser un método o propiedad de una clase. Para estos casos, se debe utilizar 
+    la definición de la clase.
     """
     scope = self
     while scope is not None:
@@ -554,11 +576,7 @@ class Scope:
 
       # Verificar si scope actual contiene a elementStop
       if elementStop is not None:
-        if elementStop.name in scope.functions and scope.functions[elementStop.name] == elementStop:
-          return False
-        if elementStop.name in scope.classes and scope.classes[elementStop.name] == elementStop:
-          return False
-        if elementStop.name in scope.objects and scope.objects[elementStop.name] == elementStop:
+        if elementStop.name in scope.elements and scope.elements[elementStop.name] == elementStop:
           return False
         if elementStop.name in scope.objectInheritances and scope.objectInheritances[elementStop.name] == elementStop:
           return False
@@ -572,11 +590,11 @@ class Scope:
   def getInheritedObjectsList(self):
     return list(self.objectInheritances.values())
   
-  def getInheritedParametersList(self):
-    return list(self.parameterInheritances.values())
+  def getInheritedPropertiesList(self):
+    return list(self.propertyInheritances.values())
 
   def __repr__(self):
-        return f"Scope(level={self.level}, type={self.type}, functions={self.functions}, classes={self.classes}, objects={self.objects}), params={self.parameters}, objectInheritances={self.objectInheritances}, parameterInheritances={self.parameterInheritances}"
+        return f"Scope(level={self.level}, type={self.type}, elements={self.elements}, properties={self.properties}, objectInheritances={self.objectInheritances}, parameterInheritances={self.propertyInheritances}"
 
 class SymbolTable:
 

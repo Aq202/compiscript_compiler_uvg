@@ -141,8 +141,8 @@ class SemanticChecker(CompiscriptListener):
 
       # Si existen copias locales de objetos o params heredados
       objectInheritances = SymbolTable.currentScope.getInheritedObjectsList()
-      paramInheritances = SymbolTable.currentScope.getInheritedParametersList()
-      for objectRef in objectInheritances + paramInheritances:
+      propsInheritances = SymbolTable.currentScope.getInheritedPropertiesList()
+      for objectRef in objectInheritances + propsInheritances:
 
         if objectRef.reference == None:
           continue
@@ -260,8 +260,9 @@ class SemanticChecker(CompiscriptListener):
           elif lexeme == "nil":
             ctx.type = NilType()
 
-        elif isinstance(child, CompiscriptParser.FunAnonContext):
-          # El nodo primario es una función anónima
+        elif isinstance(child, CompiscriptParser.FunAnonContext) or \
+              isinstance(child, CompiscriptParser.InstantiationContext):
+          # El nodo primario es una función anónima o la instancia de una clase
           ctx.type = child.type
 
     def exitCall(self, ctx: CompiscriptParser.CallContext):
@@ -328,7 +329,17 @@ class SemanticChecker(CompiscriptListener):
             attribute = ctx.IDENTIFIER(0)
 
             if attribute != None:
-              elemType = classScope.getElementType(attribute.getText(), searchInParentScopes=True, searchInParentClasses=True)
+              
+              attributeName = attribute.getText()
+
+              elemType = classScope.getProperty(attributeName, searchInParentScopes=False)
+              if elemType == None:
+                
+                # Buscar en la clase padre
+                parentClassScope = node_type.getParentScope()
+                if parentClassScope != None:
+                  elemType = parentClassScope.getProperty(attributeName, searchInParentScopes=False)
+                  
 
               node_type = NilType() if elemType == None else elemType
 
@@ -491,11 +502,11 @@ class SemanticChecker(CompiscriptListener):
         classBodyScope = receiverType.bodyScope
 
         # Verificar si el identificador del parametro existe en el scope de la clase
-        originaParamRef = classBodyScope.getParameter(identifier, searchInParentScopes=False)
+        originaParamRef = classBodyScope.getProperty(identifier, searchInParentScopes=False)
 
         if originaParamRef == None:
           # No existe, solo agregarlo
-          classBodyScope.addParameter(identifier, assignmentValueType)
+          classBodyScope.addProperty(identifier, assignmentValueType)
           return
 
         # Actualizar el tipo del atributo en el bodyScope de la clase
@@ -508,8 +519,8 @@ class SemanticChecker(CompiscriptListener):
 
           # buscar copias locales de param en scopes padres (o el parametro original, si no hay)
           # Y modificar su
-          paramParentRef = SymbolTable.currentScope.getParameter(identifier, searchInParentScopes=True)
-          SymbolTable.currentScope.modifyInheritedParameterType(paramParentRef, assignmentValueType)
+          paramParentRef = SymbolTable.currentScope.getProperty(identifier, searchInParentScopes=True)
+          SymbolTable.currentScope.modifyInheritedPropertyType(paramParentRef, assignmentValueType)
           
         else:
           # Si es local, se modifica el objeto local
@@ -577,7 +588,7 @@ class SemanticChecker(CompiscriptListener):
       # Verificar si la variable ya ha sido declarada (exclusivamente en dicho scope)
       if SymbolTable.currentScope.searchElement(identifierName, searchInParentScopes=False, searchInParentClasses=False):
         # error semántico
-        error = SemanticError(f"La variable '{identifierName}' ya ha sido declarada.", identifierToken.line, identifierToken.column)
+        error = SemanticError(f"El identificador '{identifierName}' ya ha sido declarado.", identifierToken.line, identifierToken.column)
         self.addSemanticError(error)
         ctx.type = error
         return
@@ -718,6 +729,42 @@ class SemanticChecker(CompiscriptListener):
           # El punto y coma de la primera expresión no es un nodo (va incluido en la expresión como tal)
           # Cuando se encuentra un nodo terminal con ;, significa que ya se ha pasado la primera expresión
           return
+
+    def exitInstantiation(self, ctx: CompiscriptParser.InstantiationContext):
+      super().exitInstantiation(ctx)
+
+      # Obtener el tipo de la clase a instanciar
+      classNameToken = ctx.IDENTIFIER()
+
+      if classNameToken == None: # Error léxico o sintáctico, ignorar
+        ctx.type = None
+        return
+      
+      className = classNameToken.getText()
+
+      # Verificar si la clase existe
+      classDef = SymbolTable.currentScope.searchClass(className)
+
+      if classDef == None:
+        # error semántico
+        line = ctx.start.line
+        column = ctx.start.column
+        error = SemanticError(f"La clase {className} no ha sido definida.", line, column)
+        self.addSemanticError(error)
+        ctx.type = error
+        return
+      
+      # Crear una instancia de la clase
+      ctx.type = classDef.getType()
+
+
+    def exitPrintStmt(self, ctx: CompiscriptParser.PrintStmtContext):
+      super().exitPrintStmt(ctx)
+
+      expression = ctx.expression()
+
+      if expression != None:
+        print("\033[32mPRINT:\033[0m", expression.type)
 
     def exitProgram(self, ctx: CompiscriptParser.ProgramContext):
       super().exitProgram(ctx)
