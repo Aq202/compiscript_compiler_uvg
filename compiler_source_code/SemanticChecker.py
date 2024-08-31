@@ -764,7 +764,7 @@ class SemanticChecker(CompiscriptListener):
       isAmbiguous = SymbolTable.currentScope.isExecutionAmbiguous(functionDef)
       
       # Obtener tipo de la expresión y asignar al tipo de retorno
-      if functionDef.returnType == None:
+      if not functionDef.returnTypeHasChanged:
         # Si el tipo de retorno no ha sido definido, asignar el tipo de la expresión
         # Si la ejecución del return no es ambigua, evitar que el tipo de dato sea sobrescrito
         functionDef.setReturnType(expression.type, preventOverwrite= not isAmbiguous)

@@ -187,7 +187,8 @@ class FunctionType:
       self.name = name
       self.params = []
       self.bodyScope = None
-      self.returnType = None
+      self.returnType = NilType()
+      self.returnTypeHasChanged = False
       self.blockReturnTypeChange = False
     
     def setBodyScope(self, bodyScope):
@@ -207,6 +208,7 @@ class FunctionType:
       if self.blockReturnTypeChange == True:
         return
       
+      self.returnTypeHasChanged = True
       self.returnType = returnType
       self.blockReturnTypeChange = preventOverwrite
 
