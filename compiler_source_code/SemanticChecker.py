@@ -789,7 +789,7 @@ class SemanticChecker(CompiscriptListener):
       condition = ctx.expression()
       if condition != None: # Si es none, es un error léxico o sintactico, ignorar
         
-        if not condition.type.equalsType(BoolType):
+        if not condition.type.equalsType((BoolType, CompilerError)):
           # error semántico, la condición no es de tipo booleano o any
           line = condition.start.line
           column = condition.start.column
@@ -810,7 +810,7 @@ class SemanticChecker(CompiscriptListener):
       condition = ctx.expression()
       if condition != None: # Si es none, es un error léxico o sintactico, ignorar
         
-        if not condition.type.equalsType(BoolType):
+        if not condition.type.equalsType((BoolType, CompilerError)):
           # error semántico, la condición no es de tipo booleano o any
           line = condition.start.line
           column = condition.start.column
@@ -842,9 +842,12 @@ class SemanticChecker(CompiscriptListener):
     def exitForStmt(self, ctx: CompiscriptParser.ForStmtContext):
       super().exitForStmt(ctx)
 
+      section = 0 # 0: primera expresión, 1: segunda expresión, 2: tercera expresión
+
       # Verificar que segunda expresión sea de tipo booleano
       for child in ctx.children:
-        if isinstance(child, CompiscriptParser.ExpressionContext):
+        print("fooor", child.getText())
+        if isinstance(child, CompiscriptParser.ExpressionContext) and section == 1:
 
           if child.type.equalsType(CompilerError):
             # Si el tipo de la expresión es un error, ignorar
@@ -857,10 +860,12 @@ class SemanticChecker(CompiscriptListener):
             error = SemanticError("La condición del for debe ser de tipo booleano.", line, column)
             self.addSemanticError(error)
             return
-        elif child.getText() == ";":
-          # El punto y coma de la primera expresión no es un nodo (va incluido en la expresión como tal)
-          # Cuando se encuentra un nodo terminal con ;, significa que ya se ha pasado la primera expresión
-          return
+        elif child.getText() == ";" or isinstance(child, CompiscriptParser.VarDeclContext) or \
+              isinstance(child, CompiscriptParser.ExprStmtContext):
+          
+          # Cambiar de sección del for
+          section += 1
+          print("section", section)
 
     def exitInstantiation(self, ctx: CompiscriptParser.InstantiationContext):
       super().exitInstantiation(ctx)
