@@ -1,7 +1,7 @@
 from antlr4 import *
 from antlr.CompiscriptListener import CompiscriptListener
 from antlr.CompiscriptParser import CompiscriptParser
-from SymbolTable import SymbolTable, TypesNames, FunctionType, ClassType, ScopeType, AnyType, NumberType, StringType, BoolType, NilType, UnionType
+from SymbolTable import SymbolTable, TypesNames, FunctionType, ClassType, ScopeType, AnyType, NumberType, StringType, BoolType, NilType, UnionType, ArrayType
 from Errors import SemanticError, CompilerError
 
 class SemanticChecker(CompiscriptListener):
@@ -342,6 +342,31 @@ class SemanticChecker(CompiscriptListener):
 
               node_type = NilType() if elemType == None else elemType
 
+          elif lexeme == "[":
+
+            # Se está accediendo a un elemento de un array
+            
+            # verificar si el tipo es un array
+            if not node_type.equalsType(CompilerError) and not node_type.equalsType(ArrayType):
+              # error semántico
+              error = SemanticError("El identificador no es un array.", line, column)
+              self.addSemanticError(error)
+              node_type = error
+              break
+
+            # Verificar que el tipo del índice sea numérico
+            indexToken = ctx.expression(0)
+            indexType = NilType() if indexToken == None else indexToken.type
+
+            if not indexType.equalsType(CompilerError) and not indexType.equalsType(NumberType):
+              # error semántico
+              error = SemanticError("El índice del array debe ser de tipo numérico.", line, column)
+              self.addSemanticError(error)
+              node_type = error
+              break
+
+            # Si se accede correctamente, asignar el tipo de array (AnyType siempre)
+            node_type = AnyType()
 
       # asignar el tipo del nodo
       ctx.type = node_type
@@ -863,6 +888,12 @@ class SemanticChecker(CompiscriptListener):
       
       # Crear una instancia de la clase
       ctx.type = classDef.getType()
+
+    def exitArray(self, ctx: CompiscriptParser.ArrayContext):
+      super().exitArray(ctx)
+
+      # Crear tipo array de tipos any
+      ctx.type = ArrayType()
 
 
     def exitPrintStmt(self, ctx: CompiscriptParser.PrintStmtContext):

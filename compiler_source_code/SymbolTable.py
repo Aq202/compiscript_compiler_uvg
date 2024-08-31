@@ -139,6 +139,24 @@ class BoolType(PrimitiveType):
     return isinstance(other, BoolType)
 
 
+class ArrayType(DataType):
+  
+    def __init__(self):
+      self.name = TypesNames.ARRAY.value
+
+    def getType(self):
+      self
+
+    def equalsType(self, __class__):
+      return __class__ == AnyType or isinstance(self, __class__)
+    
+    def __eq__(self, other):
+      # Sobreescribir __eq__ para que todos los objetos de ArrayType sean iguales
+      return isinstance(other, ArrayType)
+
+    def __repr__(self) -> str:
+      return f"ArrayType()"
+
 class ClassType(DataType):
 
   def __init__(self, name, bodyScope, parent = None):
@@ -197,21 +215,6 @@ class FunctionType:
 
     def __repr__(self) -> str:
       return f"FunctionType(name={self.name}, params={self.params}, returnType={self.returnType})"
-class ArrayType:
-  
-    def __init__(self, name, elementType, size):
-      self.name = name
-      self.elementType = elementType
-      self.size = size # The size is in units of the element type
-
-    def getType(self):
-      self
-
-    def equalsType(self, __class__):
-      return __class__ == AnyType or isinstance(self, __class__)
-
-    def __repr__(self) -> str:
-      return f"ArrayType(name={self.name}, elementType={self.elementType}, size={self.size})"
     
 class ObjectType:
   """
