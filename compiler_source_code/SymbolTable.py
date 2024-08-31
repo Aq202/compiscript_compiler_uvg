@@ -18,6 +18,7 @@ class ScopeType(Enum):
   """
   Tipos de bloques de código
   """
+  CONSTRUCTOR = "constructor"
   FUNCTION = "function"
   CLASS = "class"
   LOOP = "loop"
@@ -157,30 +158,6 @@ class ArrayType(DataType):
     def __repr__(self) -> str:
       return f"ArrayType()"
 
-class ClassType(DataType):
-
-  def __init__(self, name, bodyScope, parent = None):
-    self.name = name
-    self.parent = parent # define the parent class (inheritance)
-    self.bodyScope = bodyScope # Scope of the class body
-
-    bodyScope.reference = self # Save reference to class definition in his body scope
-
-  def equalsType(self, __class__):
-    # Para clases, solo se compara si son exactamente iguales
-    return __class__ == ClassType
-  
-  def getType(self):
-    return self
-  
-  def getParentScope(self):
-    if self.parent is None:
-      return None
-    return self.parent.bodyScope
-    
-  def __repr__(self) -> str:
-    return f"ClassType(name={self.name}, parent={self.parent})"
-
 class FunctionType:
   
     def __init__(self, name):
@@ -218,7 +195,37 @@ class FunctionType:
     def __repr__(self) -> str:
       returnType = self.returnType if self.returnType != self else "FunctionType(SELF)"
       return f"FunctionType(name={self.name}, params={self.params}, returnType={returnType})"
+
+class ClassType(DataType):
+
+  def __init__(self, name, bodyScope, parent = None):
+    self.name = name
+    self.parent = parent # define the parent class (inheritance)
+    self.bodyScope = bodyScope # Scope of the class body
+    self.constructor = None
+
+    bodyScope.reference = self # Save reference to class definition in his body scope
+
+  def equalsType(self, __class__):
+    # Para clases, solo se compara si son exactamente iguales
+    return __class__ == ClassType
+  
+  def getType(self):
+    return self
+  
+  def getParentScope(self):
+    if self.parent is None:
+      return None
+    return self.parent.bodyScope
+  
+  def addConstructor(self):
+    funcDef = FunctionType("init")
+    self.constructor = funcDef
+    return funcDef
     
+  def __repr__(self) -> str:
+    return f"ClassType(name={self.name}, parent={self.parent})"
+  
 class ObjectType:
   """
   Clase que empaqueta entidades como variables u objetos.
@@ -434,6 +441,25 @@ class Scope:
       scope = scope.parent
 
     return None
+  
+  def getFunction(self, name, searchInParentScopes = True):
+    """
+    Retorna el objeto de una función en el scope actual o en scopes padres.
+    Si no lo encuentra retorna None
+    """
+    scope = self
+    while scope is not None:
+
+      # Buscar en las listas de funciones
+      if name in scope.elements and isinstance(scope.elements[name], FunctionType):
+        return scope.elements[name]
+
+      if not searchInParentScopes:
+        break
+
+      scope = scope.parent
+
+    return None
 
   def searchClass(self, name):
     """
@@ -466,6 +492,7 @@ class Scope:
     """
     Verifica si el scope actual corresponde a la definición de un método (Función dentro de una clase)
     """
+  
     # Verificar que sea una función
     if not self.isFunctionScope():
       return False

@@ -83,6 +83,26 @@ class SemanticChecker(CompiscriptListener):
       if functionName == None:
         functionName = CompilerError("No se ha definido el nombre de la función")
 
+      # Si el scope actual es una clase, verificar si la función es un constructor
+      if functionName == "init" and SymbolTable.currentScope.isClassScope():
+        classDef = SymbolTable.currentScope.reference
+        
+        if classDef.constructor == None:
+          # Agregar constructor a la clase
+          classDef.addConstructor()
+          # Indica que el siguiente bloque es el cuerpo de un constructor
+          SymbolTable.nextBlockType = ScopeType.CONSTRUCTOR 
+          return
+        
+        else:
+          # error semántico
+          error = SemanticError("La clase ya tiene un constructor definido.", ctx.start.line, ctx.start.column)
+          self.addSemanticError(error)
+          ctx.type = error
+          
+
+      
+      # No es un constructor (o hay error al agregar constructor), agregar función normal
       SymbolTable.currentScope.addFunction(functionName)
       SymbolTable.nextBlockType = ScopeType.FUNCTION # Indica que el siguiente bloque es el cuerpo de la función
       
@@ -118,9 +138,15 @@ class SemanticChecker(CompiscriptListener):
       # Resetear tipo de bloque
       SymbolTable.nextBlockType = None
 
-      # Verificar si el scope corresponde a una función
-      # Si la última función no tiene definido un bodyscope, se le asigna el scope del bloque
-      functionDef = SymbolTable.currentScope.getLastFunction()
+      # Verificar si el scope corresponde a una función o un constructor
+      # Si es asi, se le asigna el scope del bloque a la definición de la función
+      functionDef = None
+      if blockType == ScopeType.FUNCTION:
+        functionDef = SymbolTable.currentScope.getLastFunction()
+      elif blockType == ScopeType.CONSTRUCTOR:
+        classDef = SymbolTable.currentScope.reference
+        functionDef = classDef.constructor
+
       if functionDef != None and functionDef.bodyScope == None:
         
         # Agregar params al scope de la función
