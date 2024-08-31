@@ -319,7 +319,7 @@ class SemanticChecker(CompiscriptListener):
             if not node_type.equalsType(CompilerError) and not node_type.equalsType(FunctionType):
 
               # Error semántico, se está llamando a algo diferente a una función
-              error = SemanticError(f"El identificador {primary_name} no es una función.", line, column)
+              error = SemanticError(f"El identificador '{primary_name}' no es una función.", line, column)
               self.addSemanticError(error)
               ctx.type = error
               break
@@ -349,24 +349,8 @@ class SemanticChecker(CompiscriptListener):
               break
 
           
-            # Obtener el atributo de la clase, de lo contrario retornar null
-            classScope = node_type.bodyScope
-            attribute = ctx.IDENTIFIER(0)
-
-            if attribute != None:
-              
-              attributeName = attribute.getText()
-
-              elemType = classScope.getProperty(attributeName, searchInParentScopes=False)
-              if elemType == None:
-                
-                # Buscar en la clase padre
-                parentClassScope = node_type.getParentScope()
-                if parentClassScope != None:
-                  elemType = parentClassScope.getProperty(attributeName, searchInParentScopes=False)
-                  
-
-              node_type = NilType() if elemType == None else elemType
+            # Obtener el atributo de la clase (Siempre es any)
+            node_type = AnyType()
 
           elif lexeme == "[":
 
@@ -633,9 +617,6 @@ class SemanticChecker(CompiscriptListener):
         # No es una asignación
         return
 
-      assignmentValueType = ctx.assignment().type
-      identifier = ctx.IDENTIFIER().getText() # identificador del atributo o variable
-
       if ctx.call() != None:
         # Es una asignación a un atributo de clase
 
@@ -656,36 +637,14 @@ class SemanticChecker(CompiscriptListener):
           self.addSemanticError(error)
           return
 
-  
-        classBodyScope = receiverType.bodyScope
-
-        # Verificar si el identificador del parametro existe en el scope de la clase
-        originaParamRef = classBodyScope.getProperty(identifier, searchInParentScopes=False)
-
-        if originaParamRef == None:
-          # No existe, solo agregarlo
-          classBodyScope.addProperty(identifier, assignmentValueType)
-          return
-
-        # Actualizar el tipo del atributo en el bodyScope de la clase
-
-        methodDef = SymbolTable.currentScope.getParentMethod(searchInParentScopes=False) # Ver si scope actual es el método padre
-        isLocal = methodDef != None
-
-        if not isLocal:
-          # Si no es local, se crea (o modifica) una copia local del parametro heredado
-
-          # buscar copias locales de param en scopes padres (o el parametro original, si no hay)
-          # Y modificar su
-          paramParentRef = SymbolTable.currentScope.getProperty(identifier, searchInParentScopes=True)
-          SymbolTable.currentScope.modifyInheritedPropertyType(paramParentRef, assignmentValueType)
-          
-        else:
-          # Si es local, se modifica el objeto local
-          originaParamRef.setType(assignmentValueType)
+        # No se asigna un tipo al atributo, siempre es any
+        
       
       else:
         # Es una asignación a variable ya declarada
+
+        assignmentValueType = ctx.assignment().type
+        identifier = ctx.IDENTIFIER().getText() # identificador del atributo o variable
         
         # Obtener primero objeto solo en el scope actual
         paramRef = SymbolTable.currentScope.getObject(identifier, searchInParentScopes=False)
