@@ -214,7 +214,8 @@ class FunctionType:
       return self.params[::-1]
 
     def __repr__(self) -> str:
-      return f"FunctionType(name={self.name}, params={self.params}, returnType={self.returnType})"
+      returnType = self.returnType if self.returnType != self else "FunctionType(SELF)"
+      return f"FunctionType(name={self.name}, params={self.params}, returnType={returnType})"
     
 class ObjectType:
   """
@@ -245,7 +246,8 @@ class ObjectType:
     self.reference = reference
 
   def __repr__(self):
-    return f"ObjectType(name={self.name}, type={self.type}, reference={self.reference})"
+    reference = self.reference if self.reference != self else "ObjectType(SELF)"
+    return f"ObjectType(name={self.name}, type={self.type}, reference={reference})"
 
 class Scope:
   
