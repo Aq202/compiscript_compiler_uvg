@@ -260,9 +260,8 @@ class SemanticChecker(CompiscriptListener):
           elif lexeme == "nil":
             ctx.type = NilType()
 
-        elif isinstance(child, CompiscriptParser.FunAnonContext) or \
-              isinstance(child, CompiscriptParser.InstantiationContext):
-          # El nodo primario es una función anónima o la instancia de una clase
+        else:
+          # Es un nodo no terminal (funAnon, instanciation, expression o array)
           ctx.type = child.type
 
     def exitCall(self, ctx: CompiscriptParser.CallContext):
@@ -366,96 +365,204 @@ class SemanticChecker(CompiscriptListener):
     
     def exitFactor(self, ctx: CompiscriptParser.FactorContext):
       super().exitFactor(ctx)
-
-      # Obtener el tipo de ambos nodos hijos
+      
+      # Obtener el tipo del primer factor y asignar al nodo
       child1 = ctx.unary(0)
-      child1_type = child1.type if child1 else None
+      ctx.type = child1.type if child1 else None
 
-      # Obtener el segundo hijo 'unary' si existe
-      child2 = ctx.unary(1)
-      child2_type = child2.type if child2 else None
+      if len(ctx.children) <= 1:
+        return
 
-      # pendiente: verificar si el tipo es correcto para la operación
+      # Si hay más de un factor, verificar que todos sean numéricos
 
+      for child in ctx.getChildren():
+        if not isinstance(child, tree.Tree.TerminalNode):
 
-      # Asignar mismo tipo a este nodo
-      ctx.type = child1_type
+          childType = child.type
+          
+          if childType.equalsType(CompilerError):
+            # Si uno de los tipos es un error, solo ignorar
+            ctx.type = childType
+          
+          elif not childType.equalsType(NumberType):
+            # error semántico. Alguno de los factores no es numérico
+            line = ctx.start.line
+            column = ctx.start.column
+            error = SemanticError("El factor debe ser de tipo numérico.", line, column)
+            self.addSemanticError(error)
+            ctx.type = error
 
     def exitTerm(self, ctx: CompiscriptParser.TermContext):
       super().exitTerm(ctx)
 
-      # Obtener el tipo de ambos nodos hijos
+      # Obtener el tipo del primer factor y asignar al nodo
       child1 = ctx.factor(0)
-      child1_type = child1.type if child1 else None
+      ctx.type = child1.type if child1 else None
 
-      child2 = ctx.factor(1)
-      child2_type = child2.type if child2 else None
+      if len(ctx.children) <= 1:
+        return
 
-      # pendiente: verificar si el tipo es correcto para la operación
+      # Si hay más de un factor, verificar que todos sean numéricos
 
-      # Asignar mismo tipo a este nodo
-      ctx.type = child1_type
+      for child in ctx.getChildren():
+        if not isinstance(child, tree.Tree.TerminalNode):
+
+          childType = child.type
+          
+          if childType.equalsType(CompilerError):
+            # Si uno de los tipos es un error, solo ignorar
+            ctx.type = childType
+          
+          elif not childType.equalsType(NumberType):
+            # error semántico. Alguno de los factores no es numérico
+            line = ctx.start.line
+            column = ctx.start.column
+            error = SemanticError("El factor debe ser de tipo numérico.", line, column)
+            self.addSemanticError(error)
+            ctx.type = error
 
     def exitComparison(self, ctx: CompiscriptParser.ComparisonContext):
       super().exitComparison(ctx)
 
-      # Obtener el tipo de ambos nodos hijos
-      child1 = ctx.term(0)
-      child1_type = child1.type if child1 else None
+      if len(ctx.children) <= 1:
+        # Si solo hay un hijo, obtener el tipo y asignar al nodo
+        child1 = ctx.term(0)
+        ctx.type = child1.type if child1 else None
+        return
 
-      child2 = ctx.term(1)
-      child2_type = child2.type if child2 else None
+      # Si hay más de un hijo, verificar que todos sean del mismo tipo
 
-      # pendiente: verificar si el tipo es correcto para la operación
+      type = None
 
-      # Asignar mismo tipo a este nodo
-      ctx.type = child1_type
+      for child in ctx.getChildren():
+        if not isinstance(child, tree.Tree.TerminalNode):
+
+          childType = child.type
+
+          if type != None and type.equalsType(CompilerError):
+            # Si uno de los tipos es un error, solo ignorar
+            ctx.type = type
+            return
+          
+          if childType.equalsType(CompilerError):
+            # Si uno de los tipos es un error, solo ignorar
+            ctx.type = childType
+            return
+          
+          if type != None  and not type.equalsType(childType.__class__):
+            # error semántico. Los tipos no son comparables
+            line = ctx.start.line
+            column = ctx.start.column
+            error = SemanticError(f"Los tipos '{type.name}' y '{childType.name}' no son comparables.", line, column)
+            self.addSemanticError(error)
+            ctx.type = error
+            return
+          
+          type = childType
+
+      ctx.type = BoolType()
 
 
     def exitEquality(self, ctx: CompiscriptParser.EqualityContext):
       super().exitEquality(ctx)
 
-      # Obtener el tipo de ambos nodos hijos
-      child1 = ctx.comparison(0)
-      child1_type = child1.type if child1 else None
+      if len(ctx.children) <= 1:
+        # Si solo hay un hijo, obtener el tipo y asignar al nodo
+        child1 = ctx.comparison(0)
+        ctx.type = child1.type if child1 else None
+        return
 
-      child2 = ctx.comparison(1)
-      child2_type = child2.type if child2 else None
+      # Si hay más de un hijo, verificar que todos sean del mismo tipo
 
-      # pendiente: verificar si el tipo es correcto para la operación
+      type = None
 
-      # Asignar mismo tipo a este nodo
-      ctx.type = child1_type
+      for child in ctx.getChildren():
+        if not isinstance(child, tree.Tree.TerminalNode):
+
+          childType = child.type
+
+          if (type != None and type.equalsType(CompilerError)):
+            # Si uno de los tipos es un error, solo ignorar
+            ctx.type = type
+            return
+          
+          if childType.equalsType(CompilerError):
+            # Si uno de los tipos es un error, solo ignorar
+            ctx.type = childType
+            return
+
+          if type != None and not type.equalsType(childType.__class__):
+            # error semántico. Los tipos no son comparables
+            line = ctx.start.line
+            column = ctx.start.column
+            error = SemanticError(f"Los tipos '{type.name}' y '{childType.name}' no son comparables.", line, column)
+            self.addSemanticError(error)
+            ctx.type = error
+            return
+          
+          type = childType
+
+      ctx.type = BoolType()
 
     def exitLogic_and(self, ctx: CompiscriptParser.Logic_andContext):
       super().exitLogic_and(ctx)
+      
+      if len(ctx.children) <= 1:
+        # Si solo hay un hijo, obtener y asignar su tipo
+        child1 = ctx.equality(0)
+        ctx.type = child1.type if child1 else None
+        return
+      
+      ctx.type = BoolType() # Tipo bool por defecto
 
-      # Obtener el tipo de ambos nodos hijos
-      child1 = ctx.equality(0)
-      child1_type = child1.type if child1 else None
+      # Si hay más de un nodo, verificar que todos sean numéricos
+      for child in ctx.getChildren():
+        if not isinstance(child, tree.Tree.TerminalNode):
 
-      child2 = ctx.equality(1)
-      child2_type = child2.type if child2 else None
+          childType = child.type
+          
+          if childType.equalsType(CompilerError):
+            # Si uno de los tipos es un error, solo ignorar
+            ctx.type = childType
+          
+          elif not childType.equalsType(BoolType):
+            # error semántico. Alguno de los factores no es numérico
+            line = ctx.start.line
+            column = ctx.start.column
+            error = SemanticError("Los operandos en una sentencia 'and' debe ser de tipo bool.", line, column)
+            self.addSemanticError(error)
+            ctx.type = error
 
-      # pendiente: verificar si el tipo es correcto para la operación
-
-      # Asignar mismo tipo a este nodo
-      ctx.type = child1_type
+      
 
     def exitLogic_or(self, ctx: CompiscriptParser.Logic_orContext):
       super().exitLogic_or(ctx)
 
-      # Obtener el tipo de ambos nodos hijos
-      child1 = ctx.logic_and(0)
-      child1_type = child1.type if child1 else None
+      if len(ctx.children) <= 1:
+        # Si solo hay un hijo, obtener y asignar su tipo
+        child1 = ctx.logic_and(0)
+        ctx.type = child1.type if child1 else None
+        return
+      
+      ctx.type = BoolType() # Tipo bool por defecto
 
-      child2 = ctx.logic_and(1)
-      child2_type = child2.type if child2 else None
+      # Si hay más de un nodo, verificar que todos sean numéricos
+      for child in ctx.getChildren():
+        if not isinstance(child, tree.Tree.TerminalNode):
 
-      # pendiente: verificar si el tipo es correcto para la operación
-
-      # Asignar mismo tipo a este nodo
-      ctx.type = child1_type
+          childType = child.type
+          
+          if childType.equalsType(CompilerError):
+            # Si uno de los tipos es un error, solo ignorar
+            ctx.type = childType
+          
+          elif not childType.equalsType(BoolType):
+            # error semántico. Alguno de los factores no es numérico
+            line = ctx.start.line
+            column = ctx.start.column
+            error = SemanticError("Los operandos en una sentencia 'or' debe ser de tipo bool.", line, column)
+            self.addSemanticError(error)
+            ctx.type = error
 
     def exitAssignment(self, ctx: CompiscriptParser.AssignmentContext):
       super().exitAssignment(ctx)
