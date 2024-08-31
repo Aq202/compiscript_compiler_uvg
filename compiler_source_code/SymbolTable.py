@@ -1,6 +1,7 @@
 from enum import Enum
 from abc import ABC, abstractmethod
 import uuid
+from copy import deepcopy
 class TypesNames(Enum):
 
   NUMBER = "NUMBER"
@@ -212,13 +213,16 @@ class ObjectType:
   Clase que empaqueta entidades como variables u objetos.
   """
 
-  def __init__(self, name, type):
+  def __init__(self, name, type, reference = None):
     """
     name: id del objeto
     type: tipo del objeto (debe ser la clase del objeto, ya sea primitivo o uno compuesto)
+    reference: si el objeto actua como una variable heredada a un scope hijo, guarda referencia al objeto
+    en su scope padre. Si la referencia es None significa que es un objeto original.
     """
     self.name = name
     self.type = type
+    self.reference = reference
 
   def getType(self):
     return self.type
@@ -229,8 +233,11 @@ class ObjectType:
   def setType(self, type):
     self.type = type
 
+  def setReference(self, reference):
+    self.reference = reference
+
   def __repr__(self):
-    return f"ObjectType(name={self.name}, type={self.type})"
+    return f"ObjectType(name={self.name}, type={self.type}, reference={self.reference})"
 
 class Scope:
   
@@ -242,6 +249,11 @@ class Scope:
     self.functions = dict()
     self.classes = dict()
     self.objects = dict()
+    self.parameters = dict() # Parámetros de una función
+
+    # Variables heredadas de un scope padre. Se agregan cuando se modifica el valor de una variable en un scope hijo.
+    self.objectInheritances = dict()
+    self.parameterInheritances = dict()
 
     # Saves reference to class or function definition
     self.reference = None
@@ -282,6 +294,36 @@ class Scope:
     object = ObjectType(name, type)
     self.objects[name] = object
 
+  def addParameter(self, name, type):
+    object = ObjectType(name, type)
+    self.parameters[name] = object
+
+  def modifyInheritedObjectType(self, originalObject, newType):
+    """
+    Crea una copia de de un objeto heredado en un scope hijo para modificar su tipo.
+    """
+    if originalObject.name in self.objectInheritances:
+      self.objectInheritances[originalObject.name].setType(newType)
+    else:
+      copy = deepcopy(originalObject)
+      copy.setType(newType)
+      copy.setReference(originalObject)
+
+      self.objectInheritances[originalObject.name] = copy
+
+  def modifyInheritedParameterType(self, originalParam, newType):
+    """
+    Crea una copia de de un objeto heredado en un scope hijo para modificar su tipo.
+    """
+    if originalParam.name in self.parameterInheritances:
+      self.parameterInheritances[originalParam.name].setType(newType)
+    else:
+      copy = deepcopy(originalParam)
+      copy.setType(newType)
+      copy.setReference(originalParam)
+
+      self.parameterInheritances[originalParam.name] = copy
+
   def searchElement(self, name, searchInParentScopes = True, searchInParentClasses = True):
     """
     Busca un elemento en el scope actual y padres (clase, funcion u objeto)
@@ -299,6 +341,8 @@ class Scope:
         return scope.classes[name]
       if name in scope.objects:
         return scope.objects[name]
+      if name in scope.objectInheritances:
+        return scope.objectInheritances[name]
       
       # Buscar en la clase padre si es una clase
       if searchInParentClasses and scope.isClassScope():
@@ -328,7 +372,7 @@ class Scope:
       return None
     return element.getType()
   
-  def getObject(self, name):
+  def getObject(self, name, searchInParentScopes = True):
     """
     Retorna el objeto de una variable en el scope actual o en scopes padres.
     Si no lo encuentra retorna None
@@ -339,7 +383,35 @@ class Scope:
       # Buscar en las listas de variables (objetos)
       if name in scope.objects:
         return scope.objects[name]
-    
+      
+      if name in scope.objectInheritances:
+        return scope.objectInheritances[name]
+
+      if not searchInParentScopes:
+        break
+
+      scope = scope.parent
+
+    return None
+  
+  def getParameter(self, name, searchInParentScopes = True):
+    """
+    Retorna el objeto de una variable en el scope actual o en scopes padres.
+    Si no lo encuentra retorna None
+    """
+    scope = self
+    while scope is not None:
+
+      # Buscar en las listas de variables (objetos)
+      if name in scope.parameters:
+        return scope.parameters[name]
+      
+      if name in scope.parameterInheritances:
+        return scope.parameterInheritances[name]
+
+      if not searchInParentScopes:
+        break
+
       scope = scope.parent
 
     return None
@@ -488,6 +560,8 @@ class Scope:
           return False
         if elementStop.name in scope.objects and scope.objects[elementStop.name] == elementStop:
           return False
+        if elementStop.name in scope.objectInheritances and scope.objectInheritances[elementStop.name] == elementStop:
+          return False
 
       if scope.type in [ScopeType.FUNCTION, ScopeType.CONDITIONAL, ScopeType.LOOP]:
         return True
@@ -495,8 +569,14 @@ class Scope:
       scope = scope.parent
     return False
 
+  def getInheritedObjectsList(self):
+    return list(self.objectInheritances.values())
+  
+  def getInheritedParametersList(self):
+    return list(self.parameterInheritances.values())
+
   def __repr__(self):
-        return f"Scope(level={self.level}, type={self.type}, functions={self.functions}, classes={self.classes}, objects={self.objects})"
+        return f"Scope(level={self.level}, type={self.type}, functions={self.functions}, classes={self.classes}, objects={self.objects}), params={self.parameters}, objectInheritances={self.objectInheritances}, parameterInheritances={self.parameterInheritances}"
 
 class SymbolTable:
 

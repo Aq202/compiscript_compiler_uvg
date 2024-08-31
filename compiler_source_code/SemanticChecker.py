@@ -139,6 +139,30 @@ class SemanticChecker(CompiscriptListener):
       """
       super().exitBlock(ctx)
 
+      # Si existen copias locales de objetos o params heredados
+      objectInheritances = SymbolTable.currentScope.getInheritedObjectsList()
+      paramInheritances = SymbolTable.currentScope.getInheritedParametersList()
+      for objectRef in objectInheritances + paramInheritances:
+
+        if objectRef.reference == None:
+          continue
+        
+        # Verificar si la ejecución es ambigua
+        isAmbiguous = SymbolTable.currentScope.isExecutionAmbiguous(objectRef.reference)
+
+        if isAmbiguous:
+          # Si la ejecución es ambigua, hacer una union de tipos
+          previousType = objectRef.reference.getType()
+          unionType = UnionType(previousType, objectRef.getType())
+          objectRef.reference.setType(unionType) # Asignar al padre la union
+        
+        else:
+          # Si no es ambigua, sobrescribir el tipo
+          objectRef.reference.setType(objectRef.getType())
+
+
+
+      # Volver al scope padre
       SymbolTable.returnToParentScope()
 
     def exitPrimary(self, ctx: CompiscriptParser.PrimaryContext):
@@ -462,35 +486,48 @@ class SemanticChecker(CompiscriptListener):
           ctx.type = error
           self.addSemanticError(error)
           return
-        
-        # Verificar si la ubicación de ejecución es ambigua (la asignación podría o no ejecutarse)
-        # Busca hasta encontrar el scope del método que contiene la asignación (si no es un método, parar con el scope de la clase)
-        methodDef = SymbolTable.currentScope.getParentMethod()
-        isAmbiguous = SymbolTable.currentScope.isExecutionAmbiguous(methodDef if methodDef != None else receiverType)
 
-        # Asignar el tipo del atributo en el bodyScope de la clase
-        bodyScope = receiverType.bodyScope
+  
+        classBodyScope = receiverType.bodyScope
 
-        # Si la ejecución es ambigua, hacer una union de tipos
-        if isAmbiguous:
-          previousType = bodyScope.getElementType(identifier, searchInParentScopes=False, searchInParentClasses=True)
+        # Verificar si el identificador del parametro existe en el scope de la clase
+        originaParamRef = classBodyScope.getParameter(identifier, searchInParentScopes=False)
 
-          if previousType != None:
-            # Obtener el tipo de la variable y hacer una unión de tipos (solo si ya había un tipo definido)
-            unionType = UnionType(previousType, assignmentValueType)
-            bodyScope.addObject(identifier, unionType)
-            return
-        
-        # La ejecución no es ambigua (o no había un tipo previo), se sobrescribe el tipo de la variable
-        bodyScope.addObject(identifier, assignmentValueType)
+        if originaParamRef == None:
+          # No existe, solo agregarlo
+          classBodyScope.addParameter(identifier, assignmentValueType)
+          return
+
+        # Actualizar el tipo del atributo en el bodyScope de la clase
+
+        methodDef = SymbolTable.currentScope.getParentMethod(searchInParentScopes=False) # Ver si scope actual es el método padre
+        isLocal = methodDef != None
+
+        if not isLocal:
+          # Si no es local, se crea (o modifica) una copia local del parametro heredado
+
+          # buscar copias locales de param en scopes padres (o el parametro original, si no hay)
+          # Y modificar su
+          paramParentRef = SymbolTable.currentScope.getParameter(identifier, searchInParentScopes=True)
+          SymbolTable.currentScope.modifyInheritedParameterType(paramParentRef, assignmentValueType)
+          
+        else:
+          # Si es local, se modifica el objeto local
+          originaParamRef.setType(assignmentValueType)
       
       else:
         # Es una asignación a variable ya declarada
         
-        objectRef = SymbolTable.currentScope.getObject(identifier)
+        # Obtener primero objeto solo en el scope actual
+        paramRef = SymbolTable.currentScope.getObject(identifier, searchInParentScopes=False)
+        isLocal = paramRef != None
+
+        if not isLocal:
+          # Buscar en scopes padres
+          paramRef = SymbolTable.currentScope.getObject(identifier, searchInParentScopes=True)
 
         # Verificar si el identificador existe en el scope actual
-        if objectRef == None:
+        if paramRef == None:
           # error semántico
           line = ctx.start.line
           column = ctx.start.column
@@ -499,18 +536,15 @@ class SemanticChecker(CompiscriptListener):
           self.addSemanticError(error)
           return
         
-
-        # Verificar si la ubicación de ejecución es ambigua (la asignación podría o no ejecutarse)
-        # Busca hasta encontrar el scope que guarda el objeto
-        isAmbiguous = SymbolTable.currentScope.isExecutionAmbiguous(objectRef)
-
-        if isAmbiguous:
-          # Si es ambigua, hacer una unión de tipos
-          unionType = UnionType(objectRef.getType(), assignmentValueType)
-          objectRef.setType(unionType)
+        # Actualizar el tipo de la variable
+        if not isLocal:
+          # Si no es local, se crea (o modifica) una copia local del objeto heredado
+          SymbolTable.currentScope.modifyInheritedObjectType(paramRef, assignmentValueType)
+          
         else:
-          # Si no es ambigua, sobrescribir el tipo de la variable
-          objectRef.setType(assignmentValueType)
+          # Si es local, se modifica el objeto local
+
+          paramRef.setType(assignmentValueType)
 
     def exitExpression(self, ctx: CompiscriptParser.ExpressionContext):
       super().exitExpression(ctx)
