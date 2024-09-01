@@ -791,18 +791,39 @@ class SemanticChecker(CompiscriptListener):
     def exitUnary(self, ctx: CompiscriptParser.UnaryContext):
       super().exitUnary(ctx)
 
-      child_type = None
+      # Si solo hay un nodo hijo, asignar su tipo al nodo
+      if len(ctx.children) <= 1:
+        child1 = ctx.call()
+        ctx.type = child1.type if child1 else None
+        return
 
-      for child in ctx.getChildren():
-        if not isinstance(child, tree.Tree.TerminalNode):
-          # Obtener el tipo del nodo hijo (unary o call)
-          child_type = child.type
+      operator = ctx.getChild(0).getText()
+      childType = ctx.unary().type
 
-      # pendiente: verificar si el tipo es correcto para la operación
-
-      # Asignar mismo tipo a este nodo
-      ctx.type = child_type
-
+      if childType.equalsType(CompilerError):
+        # Si el tipo del hijo es un error, asignar el error al nodo
+        ctx.type = childType
+        return
+      
+      if operator == "-" and not childType.equalsType(NumberType):
+        # error semántico. El operador unario '-' solo puede ser usado con números
+        line = ctx.start.line
+        column = ctx.start.column
+        error = SemanticError("El operador unario '-' solo puede ser usado con números.", line, column)
+        self.addSemanticError(error)
+        ctx.type = error
+        return
+      
+      if operator == "!" and not childType.equalsType(BoolType):
+        # error semántico. El operador unario '!' solo puede ser usado con booleanos
+        line = ctx.start.line
+        column = ctx.start.column
+        error = SemanticError("El operador unario '!' solo puede ser usado con booleanos.", line, column)
+        self.addSemanticError(error)
+        ctx.type = error
+        return
+      
+      ctx.type = childType # Asignar el tipo del hijo al nodo
 
     def enterCall(self, ctx: CompiscriptParser.CallContext):
       return super().enterCall(ctx)
