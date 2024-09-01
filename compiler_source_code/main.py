@@ -6,6 +6,7 @@ from antlr.CompiscriptListener import CompiscriptListener
 from anytree import Node, RenderTree, AsciiStyle
 from anytree.exporter import DotExporter
 from SemanticChecker import SemanticChecker
+from ErrorListener import LexerErrorListener, ParserErrorListener
 
 
 def create_tree(node, parser, parent=None):
@@ -22,11 +23,21 @@ def main():
     #input_stream = FileStream(sys.argv[1])
     input_stream = FileStream("D:\diego\OneDrive - UVG\Documentos Universidad\Semestre 8\compiladores\proyecto\desarrollo\compiler_source_code\prueba.txt")
     lexer = CompiscriptLexer(input_stream)
-    stream = CommonTokenStream(lexer)
-    parser = CompiscriptParser(stream)
-    tree = parser.program() # program es la regla inicial de gramática
+    
+    lexerErrorListener = LexerErrorListener()
+    lexer.removeErrorListeners()
+    lexer.addErrorListener(lexerErrorListener)
     
 
+    stream = CommonTokenStream(lexer)
+    parser = CompiscriptParser(stream)
+
+    parserErrorListener = ParserErrorListener()
+    parser.removeErrorListeners()
+    parser.addErrorListener(parserErrorListener)
+
+    tree = parser.program() # program es la regla inicial de gramática
+    
     # Dibujar arbol sintáctico
     root = create_tree(tree, parser)
 
@@ -39,9 +50,11 @@ def main():
     walker.walk(semantic_checker, tree)
 
     # Imprimir errores
-    if len(semantic_checker.errors) > 0:
-        print("Errores semánticos:")
-        for error in semantic_checker.errors:
+    errors = lexerErrorListener.errors + parserErrorListener.errors + semantic_checker.errors
+    
+    if len(errors) > 0:
+        print("\nErrores en el programa:")
+        for error in errors:
             print(error)
 
 if __name__ == '__main__':

@@ -28,3 +28,26 @@ class SemanticError(CompilerError):
         return f"SemanticError(message={self.message!r}, line={self.line}, column={self.column})"
     
 
+class LexicalError(CompilerError):
+    def __init__(self, message, line, column):
+        self.message = message
+        self.line = line
+        self.column = column
+
+    def __str__(self):
+        return f"LexicalError(message={self.message!r}, line={self.line}, column={self.column})"
+    
+    def __repr__(self):
+        return f"LexicalError(message={self.message!r}, line={self.line}, column={self.column})"
+
+class SyntaxError(CompilerError):
+    def __init__(self, message, line, column):
+        self.message = message
+        self.line = line
+        self.column = column
+
+    def __str__(self):
+        return f"SyntaxError(message={self.message!r}, line={self.line}, column={self.column})"
+    
+    def __repr__(self):
+        return f"SyntaxError(message={self.message!r}, line={self.line}, column={self.column})"
