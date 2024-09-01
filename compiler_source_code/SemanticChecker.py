@@ -1,8 +1,9 @@
 from antlr4 import *
 from antlr.CompiscriptListener import CompiscriptListener
 from antlr.CompiscriptParser import CompiscriptParser
-from SymbolTable import SymbolTable, TypesNames, FunctionType, ClassType, ScopeType, AnyType, NumberType, StringType, BoolType, NilType, UnionType, ArrayType
+from SymbolTable import SymbolTable, FunctionType, ClassType, ScopeType, AnyType, NumberType, StringType, BoolType, NilType, UnionType, ArrayType
 from Errors import SemanticError, CompilerError
+from ParamsTree import ParamsTree
 
 class SemanticChecker(CompiscriptListener):
     
@@ -10,13 +11,15 @@ class SemanticChecker(CompiscriptListener):
       super().__init__()
 
       self.errors = []
+      self.params = ParamsTree()
 
     def addSemanticError(self, error):
       self.errors.append(error)
 
 
     def enterProgram(self, ctx: CompiscriptParser.ProgramContext):
-      return super().enterProgram(ctx)
+      super().enterProgram(ctx)
+      self.params.initNodeParams() # Inicializar el árbol de parámetros
 
 
     def exitProgram(self, ctx: CompiscriptParser.ProgramContext):
@@ -164,18 +167,21 @@ class SemanticChecker(CompiscriptListener):
     def enterForStmt(self, ctx: CompiscriptParser.ForStmtContext):
       super().enterForStmt(ctx)
 
-      # Indicar que el siguiente bloque es un loop
-      SymbolTable.nextBlockType = ScopeType.LOOP
+      _, nodeParams = self.params.initNodeParams()
+
+      # Indicar que el siguiente bloque es un loop en parametros
+      nodeParams.add("blockType", ScopeType.LOOP) 
 
 
     def exitForStmt(self, ctx: CompiscriptParser.ForStmtContext):
       super().exitForStmt(ctx)
 
+      self.params.removeNodeParams()
+
       section = 0 # 0: primera expresión, 1: segunda expresión, 2: tercera expresión
 
       # Verificar que segunda expresión sea de tipo booleano
       for child in ctx.children:
-        print("fooor", child.getText())
         if isinstance(child, CompiscriptParser.ExpressionContext) and section == 1:
 
           if child.type.equalsType(CompilerError):
@@ -194,18 +200,21 @@ class SemanticChecker(CompiscriptListener):
           
           # Cambiar de sección del for
           section += 1
-          print("section", section)
 
 
     def enterIfStmt(self, ctx: CompiscriptParser.IfStmtContext):
       super().enterIfStmt(ctx)
 
-      # Indicar que el siguiente bloque es un bloque condicional
-      SymbolTable.nextBlockType = ScopeType.CONDITIONAL
+      _, nodeParams = self.params.initNodeParams()
+
+      # Indicar que el siguiente bloque es un bloque condicional en parametros
+      nodeParams.add("blockType", ScopeType.CONDITIONAL) 
 
 
     def exitIfStmt(self, ctx: CompiscriptParser.IfStmtContext):
       super().exitIfStmt(ctx)
+
+      self.params.removeNodeParams()
 
 
       # Verificar que la condición sea de tipo booleano
@@ -281,12 +290,16 @@ class SemanticChecker(CompiscriptListener):
     def enterWhileStmt(self, ctx: CompiscriptParser.WhileStmtContext):
       super().enterWhileStmt(ctx)
 
-      # Indicar que el siguiente bloque es un loop
-      SymbolTable.nextBlockType = ScopeType.LOOP
+      _, nodeParams = self.params.initNodeParams()
+
+      # Indicar que el siguiente bloque es un loop en parametros
+      nodeParams.add("blockType", ScopeType.LOOP) 
 
 
     def exitWhileStmt(self, ctx: CompiscriptParser.WhileStmtContext):
       super().exitWhileStmt(ctx)
+
+      self.params.removeNodeParams()
 
       # Verificar que la condición sea de tipo booleano
       condition = ctx.expression()
@@ -308,21 +321,15 @@ class SemanticChecker(CompiscriptListener):
       """
       super().enterBlock(ctx)
 
+      parentParams, _ = self.params.initNodeParams()
+
       # Tipo de bloque, especificado en definición previa de fun, loop o if
-      blockType = SymbolTable.nextBlockType
+      blockType = parentParams.get("blockType") # Obtenida de parametros proveidos de nodo superior
       blockScope = SymbolTable.createScope(blockType)
 
-      # Resetear tipo de bloque
-      SymbolTable.nextBlockType = None
-
-      # Verificar si el scope corresponde a una función o un constructor
+      # Intenta obtener la referencia a una función de parametros proveidos por nodo superior
       # Si es asi, se le asigna el scope del bloque a la definición de la función
-      functionDef = None
-      if blockType == ScopeType.FUNCTION:
-        functionDef = SymbolTable.currentScope.getLastFunction()
-      elif blockType == ScopeType.CONSTRUCTOR:
-        classDef = SymbolTable.currentScope.reference
-        functionDef = classDef.constructor
+      functionDef = parentParams.get("reference")      
 
       if functionDef != None and functionDef.bodyScope == None:
         
@@ -342,6 +349,8 @@ class SemanticChecker(CompiscriptListener):
       Salir del scope del bloque
       """
       super().exitBlock(ctx)
+
+      self.params.removeNodeParams()
 
       # Si existen copias locales de objetos o params heredados
       objectInheritances = SymbolTable.currentScope.getInheritedObjectsList()
@@ -373,13 +382,22 @@ class SemanticChecker(CompiscriptListener):
     def enterFunAnon(self, ctx: CompiscriptParser.FunAnonContext):
       super().enterFunAnon(ctx)
 
+      _, nodeParams = self.params.initNodeParams()
+
       # Crear y agregar una función anonima
-      SymbolTable.currentScope.addAnonymousFunction()
-      SymbolTable.nextBlockType = ScopeType.FUNCTION # Indica que el siguiente bloque es el cuerpo de la función
+      functionDef = SymbolTable.currentScope.addAnonymousFunction()
+
+      # Indicar que el siguiente bloque es una función en parametros
+      nodeParams.add("blockType", ScopeType.FUNCTION) 
+      # Pasar como parametro la función
+      nodeParams.add("reference", functionDef)
+      
 
 
     def exitFunAnon(self, ctx: CompiscriptParser.FunAnonContext):
       super().exitFunAnon(ctx)
+
+      self.params.removeNodeParams()
 
       # Retornar el tipo de la función (última creada) y eliminar de la tabla de símbolos
       functionDef = SymbolTable.currentScope.popLastFunction()
@@ -874,7 +892,6 @@ class SemanticChecker(CompiscriptListener):
       """
       super().exitPrimary(ctx)
 
-      print("COOONTEXT", ctx)
       superActive = False # Indica si el nodo previo fue el lexema "super"
 
       for child in ctx.getChildren():
@@ -975,6 +992,8 @@ class SemanticChecker(CompiscriptListener):
       """
       super().enterFunction(ctx)
 
+      _, nodeParams = self.params.initNodeParams()
+
       functionName = None
 
       for child in ctx.children:
@@ -997,9 +1016,11 @@ class SemanticChecker(CompiscriptListener):
         
         if classDef.constructor == None:
           # Agregar constructor a la clase
-          classDef.addConstructor()
+          constructorFunctionDef = classDef.addConstructor()
+          nodeParams.add("reference", constructorFunctionDef) # Guardar referencia al constructor (para hijos)
+
           # Indica que el siguiente bloque es el cuerpo de un constructor
-          SymbolTable.nextBlockType = ScopeType.CONSTRUCTOR 
+          nodeParams.add("blockType", ScopeType.CONSTRUCTOR)
           return
         
         else:
@@ -1011,12 +1032,17 @@ class SemanticChecker(CompiscriptListener):
 
       
       # No es un constructor (o hay error al agregar constructor), agregar función normal
-      SymbolTable.currentScope.addFunction(functionName)
-      SymbolTable.nextBlockType = ScopeType.FUNCTION # Indica que el siguiente bloque es el cuerpo de la función
+      functionDef = SymbolTable.currentScope.addFunction(functionName)
+      nodeParams.add("reference", functionDef) # Guardar referencia a la función (para hijos)
+
+      # Indica que el siguiente bloque es el cuerpo de la función
+      nodeParams.add("blockType", ScopeType.FUNCTION)
 
 
     def exitFunction(self, ctx: CompiscriptParser.FunctionContext):
-      return super().exitFunction(ctx)
+      super().exitFunction(ctx)
+
+      self.params.removeNodeParams()
     
 
     def enterParameters(self, ctx: CompiscriptParser.ParametersContext):
@@ -1025,8 +1051,10 @@ class SemanticChecker(CompiscriptListener):
       """
       super().enterParameters(ctx)
 
-      # Obtener la definición de la función actual (la última agregada)
-      functionDef = SymbolTable.currentScope.getLastFunction()
+      parentParams, _ = self.params.initNodeParams()
+
+      # Obtener la definición de la función actual (guardada en parametros)
+      functionDef = parentParams.get("reference")
 
       for child in ctx.children:
         if isinstance(child, tree.Tree.TerminalNodeImpl):
@@ -1037,7 +1065,9 @@ class SemanticChecker(CompiscriptListener):
 
 
     def exitParameters(self, ctx: CompiscriptParser.ParametersContext):
-      return super().exitParameters(ctx)
+      super().exitParameters(ctx)
+
+      self.params.removeNodeParams()
 
 
     def enterArguments(self, ctx: CompiscriptParser.ArgumentsContext):

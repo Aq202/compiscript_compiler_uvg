@@ -266,8 +266,6 @@ class Scope:
     self.type = type
 
     self.elements = dict()
-    self.properties = dict()
-
   
 
     # Variables heredadas de un scope padre. Se agregan cuando se modifica el valor de una variable en un scope hijo.
@@ -286,12 +284,7 @@ class Scope:
     """
     functionObj = FunctionType(name)
 
-    if self.type == ScopeType.CLASS:
-      self.properties[name] = functionObj
-    else:
-      self.elements[name] = functionObj
-
-      
+    self.elements[name] = functionObj
     return functionObj
   
   def addAnonymousFunction(self):
@@ -322,10 +315,6 @@ class Scope:
   def addObject(self, name, type):
     object = ObjectType(name, type)
     self.elements[name] = object
-
-  def addProperty(self, name, type):
-    object = ObjectType(name, type)
-    self.properties[name] = object
 
   def modifyInheritedObjectType(self, originalObject, newType):
     """
@@ -419,29 +408,7 @@ class Scope:
 
     return None
   
-  def getProperty(self, name, searchInParentScopes = True):
-    """
-    Retorna el objeto de un parametro en el scope actual o en scopes padres.
-    Al finalizar la búsqueda en el primer scope de tipo CLASS, detiene la búsqueda.
-    Si no lo encuentra retorna None
-    """
-    scope = self
-    while scope is not None:
 
-      # Buscar en las listas de parametros (solo para scope de clase)
-      if name in scope.properties:
-        return scope.properties[name]
-      
-      if name in scope.propertyInheritances:
-        return scope.propertyInheritances[name]
-
-      if not searchInParentScopes or scope.type == ScopeType.CLASS:
-        break
-
-      scope = scope.parent
-
-    return None
-  
   def getFunction(self, name, searchInParentScopes = True):
     """
     Retorna el objeto de una función en el scope actual o en scopes padres.
@@ -579,8 +546,6 @@ class Scope:
     IMPORTANTE: Si una función es redefinida, el orden se mantiene siempre, esta no se coloca al final.
     """
     scopeElements = self.elements
-    if self.type == ScopeType.CLASS:
-      scopeElements = self.properties
 
     if len(scopeElements) == 0:
       return None
@@ -628,7 +593,7 @@ class Scope:
     return list(self.propertyInheritances.values())
 
   def __repr__(self):
-        return f"Scope(level={self.level}, type={self.type}, elements={self.elements}, properties={self.properties}, objectInheritances={self.objectInheritances}, parameterInheritances={self.propertyInheritances}"
+        return f"Scope(level={self.level}, type={self.type}, elements={self.elements}, objectInheritances={self.objectInheritances}, reference={self.reference}"
 
 class SymbolTable:
 
