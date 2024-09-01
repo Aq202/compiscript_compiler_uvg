@@ -90,7 +90,7 @@ class UnionType(DataType):
     return self
   
   def equalsType(self, __class__):
-    return __class__ == AnyType or any([t.isCompatible(__class__) for t in self.types])
+    return __class__ == AnyType or any([t.equalsType(__class__) for t in self.types])
   
   def includesType(self, type):
     print([isinstance(typeObj, type) for typeObj in self.types])
