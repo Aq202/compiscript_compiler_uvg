@@ -7,7 +7,7 @@ from code_editor.EditorWindow import EditorWindow
 
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = EditorWindow()
-    window.show()
-    app.exec_()      
+  app = QApplication(sys.argv)
+  window = EditorWindow()
+  window.show()
+  app.exec_()      

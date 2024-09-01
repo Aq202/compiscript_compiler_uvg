@@ -5,53 +5,57 @@ from EditorTab import EditorTab
 
 class EditorWindow(QMainWindow):
 
-    def __init__(self, parent=None):
-        super(EditorWindow, self).__init__(parent)
-        loadUi("code_editor\\ui_files\\editor_window.ui", self)
+  def __init__(self, parent=None):
+    super(EditorWindow, self).__init__(parent)
+    loadUi("code_editor\\ui_files\\editor_window.ui", self)
+    
+    # Cambiar el título de la ventana
+    self.setWindowTitle("IDE Compiscript")
 
-        self.action_open_file.triggered.connect(self.browse_files) # Evento al presionar abrir archivo
-        self.action_save_file.triggered.connect(self.save_file)
-        self.action_new_file.triggered.connect(self.new_file)
-        self.tabWidget.tabCloseRequested.connect(lambda index: self.remove_tab(index)) # Evento al cerrar tab
-        
 
-    def create_editor_tab(self, file_path, file_name):
-        tab = EditorTab(file_path=file_path)
-        index = self.tabWidget.addTab(tab, file_name)
-        self.tabWidget.setCurrentIndex(index)
+    self.action_open_file.triggered.connect(self.browseFiles) # Evento al presionar abrir archivo
+    self.action_save_file.triggered.connect(self.saveFile)
+    self.action_new_file.triggered.connect(self.newFile)
+    self.tabWidget.tabCloseRequested.connect(lambda index: self.removeTab(index)) # Evento al cerrar tab
+      
 
-    def browse_files(self):
-        # Evento al abrir un archivo
-        file_path, _ = QFileDialog.getOpenFileName(self, "Abrir archivo", "D:/diego/OneDrive - UVG/Documentos Universidad/Semestre 7/Diseño de lenguajes/proyecto compilador/lexical_analyzer")
-        
-        if len(file_path) > 0:
-            file_name = file_path.split("/")[-1]
-            
-            self.create_editor_tab(file_path, file_name)
+  def createEditorTab(self, filePath, fileName):
+    tab = EditorTab(filePath=filePath)
+    index = self.tabWidget.addTab(tab, fileName)
+    self.tabWidget.setCurrentIndex(index)
 
-    def save_file(self):
+  def browseFiles(self):
+    # Evento al abrir un archivo
+    filePath, _ = QFileDialog.getOpenFileName(self, "Abrir archivo", "D:/diego/OneDrive - UVG/Documentos Universidad/Semestre 7/Diseño de lenguajes/proyecto compilador/lexical_analyzer")
+    
+    if len(filePath) > 0:
+      fileName = filePath.split("/")[-1]
+      
+      self.createEditorTab(filePath, fileName)
 
-        curr_widget = self.tabWidget.currentWidget()
+  def saveFile(self):
 
-        if isinstance(curr_widget, EditorTab):
+    currWidget = self.tabWidget.currentWidget()
 
-            update_tab_name = curr_widget.file_path == None
-            # Obtener editor tab actual y guardar archivo
-            curr_widget.save_file_content()
+    if isinstance(currWidget, EditorTab):
 
-            if update_tab_name and curr_widget.file_path != None:
-                # Actualizar nombre de tab actual
-                file_name = curr_widget.file_path.split("/")[-1]
-                curr_index = self.tabWidget.currentIndex()
-                self.tabWidget.setTabText(curr_index, file_name)
+      updateTabName = currWidget.filePath == None
+      # Obtener editor tab actual y guardar archivo
+      currWidget.saveFileContent()
 
-    def remove_tab(self, tab_index):
-        self.tabWidget.removeTab(tab_index)
+      if updateTabName and currWidget.filePath != None:
+        # Actualizar nombre de tab actual
+        fileName = currWidget.filePath.split("/")[-1]
+        currIndex = self.tabWidget.currentIndex()
+        self.tabWidget.setTabText(currIndex, fileName)
 
-    def new_file(self):
-        self.create_editor_tab(None, "sin_titulo")
+  def removeTab(self, tab_index):
+    self.tabWidget.removeTab(tab_index)
+
+  def newFile(self):
+    self.createEditorTab(None, "sin_titulo")
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = EditorWindow()
-    window.show()
-    app.exec_()                                                                                                                         
+  app = QApplication(sys.argv)
+  window = EditorWindow()
+  window.show()
+  app.exec_()                                                                                                                         
