@@ -775,12 +775,22 @@ class SemanticChecker(CompiscriptListener):
 
       # Verificar si la clase existe
       classDef = SymbolTable.currentScope.searchClass(className)
+      line = ctx.start.line
+      column = ctx.start.column
 
       if classDef == None:
-        # error semántico
-        line = ctx.start.line
-        column = ctx.start.column
+        # error semántico 
         error = SemanticError(f"La clase {className} no ha sido definida.", line, column)
+        self.addSemanticError(error)
+        ctx.type = error
+        return
+      
+      # Verificar si el número de parametros del constructor es correcto
+      obtainedParams = 0 if ctx.arguments() == None else len(ctx.arguments().expression())
+      if classDef.constructor != None and (obtainedParams != len(classDef.constructor.params)):
+        # error semántico, número incorrecto de parámetros
+        expectedParams = len(classDef.constructor.params)
+        error = SemanticError(f"El constructor de la clase '{className}' espera {expectedParams} parámetros pero se obtuvo {obtainedParams}.", line, column)
         self.addSemanticError(error)
         ctx.type = error
         return
@@ -869,9 +879,22 @@ class SemanticChecker(CompiscriptListener):
               ctx.type = error
               break
             elif node_type.strictEqualsType(FunctionType):
+              functionDef = node_type
+
               # Obtener el tipo de retorno de la función (solo si es exclusivamente una función)
               # Si es any, se mantiene el tipo any
-              node_type = node_type.returnType
+              node_type = functionDef.returnType
+
+              # Si es estrictamente una función, se verifica el número de params
+              obtainedParams = 0 if ctx.arguments(0) == None else len(ctx.arguments(0).expression())
+
+              if obtainedParams != len(functionDef.params):
+                # error semántico, número incorrecto de parámetros
+                expectedParams = len(functionDef.params)
+                error = SemanticError(f"La función '{primary_name}' espera {expectedParams} parámetros pero se obtuvo {obtainedParams}.", line, column)
+                self.addSemanticError(error)
+                node_type = error
+                break
 
 
           elif lexeme == ".":
