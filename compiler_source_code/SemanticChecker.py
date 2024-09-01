@@ -1,7 +1,7 @@
 from antlr4 import *
 from antlr.CompiscriptListener import CompiscriptListener
 from antlr.CompiscriptParser import CompiscriptParser
-from SymbolTable import SymbolTable, FunctionType, ClassType, ScopeType, AnyType, NumberType, StringType, BoolType, NilType, UnionType, ArrayType
+from SymbolTable import SymbolTable, FunctionType, ScopeType, AnyType, NumberType, StringType, BoolType, NilType, UnionType, ArrayType, InstanceType
 from Errors import SemanticError, CompilerError
 from ParamsTree import ParamsTree
 
@@ -466,7 +466,7 @@ class SemanticChecker(CompiscriptListener):
           return
         
         # Validar que el receiver sea un objeto de una clase
-        if not receiverType.equalsType(ClassType):
+        if not receiverType.equalsType(InstanceType):
           # error semántico
           line = ctx.start.line
           column = ctx.start.column
@@ -781,7 +781,8 @@ class SemanticChecker(CompiscriptListener):
         return
       
       # Crear una instancia de la clase
-      ctx.type = classDef.getType()
+      instanceDef = InstanceType(classDef)
+      ctx.type = instanceDef
 
 
     def enterUnary(self, ctx: CompiscriptParser.UnaryContext):
@@ -880,9 +881,9 @@ class SemanticChecker(CompiscriptListener):
               node_type = error
               break
             
-            if not node_type.equalsType(ClassType):
+            if not node_type.equalsType(InstanceType):
               # error semántico
-              error = SemanticError(f"El identificador {primary_name} no es una clase.", line, column)
+              error = SemanticError(f"El identificador '{primary_name}' no es un objeto.", line, column)
               self.addSemanticError(error)
               node_type = error
               break
@@ -953,8 +954,10 @@ class SemanticChecker(CompiscriptListener):
           elif lexeme == "this":
             # Verificar si el scope actual es un método
             if SymbolTable.currentScope.getParentMethod() != None:
+              # Obtener la clase a la que pertenece el método y crear un tipo instancia
               classDef = SymbolTable.currentScope.getParentClass()
-              ctx.type = classDef.getType()
+              instanceDef = InstanceType(classDef)
+              ctx.type = instanceDef
               
             else:
               # error semántico
@@ -991,19 +994,8 @@ class SemanticChecker(CompiscriptListener):
             # Validar identificador de clase padre (super.ident)
 
             superActive = False
-            # Verificar si el identificador existe en la clase padre
-            classDef = SymbolTable.currentScope.parent.reference
-            parentClassDef = classDef.parent
-            parentClassScope = parentClassDef.bodyScope 
-
-            elemType = parentClassScope.getElementType(lexeme, searchInParentScopes=False, searchInParentClasses=False)
-            if elemType != None:
-              ctx.type = elemType
-            else:
-              # error semántico
-              error = SemanticError(f"El atributo {lexeme} no existe en la clase padre.", line, column)
-              ctx.type = error
-              self.addSemanticError(error)
+            # retornar el tipo AnyType (todas las props de clases son de tipo any)
+            ctx.type = AnyType()
 
           
           elif type == CompiscriptParser.IDENTIFIER:

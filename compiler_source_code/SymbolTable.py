@@ -225,6 +225,19 @@ class ClassType(DataType):
     
   def __repr__(self) -> str:
     return f"ClassType(name={self.name}, parent={self.parent})"
+
+class InstanceType(DataType):
+  def __init__(self, classType):
+    self.classType = classType
+
+  def getType(self):
+    return self
+  
+  def equalsType(self, __class__):
+    return __class__ == AnyType or isinstance(self, __class__)
+  
+  def __repr__(self) -> str:
+    return f"InstanceType(classType={self.classType})"
   
 class ObjectType:
   """
