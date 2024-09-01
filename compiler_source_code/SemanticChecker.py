@@ -384,6 +384,11 @@ class SemanticChecker(CompiscriptListener):
         if isAmbiguous:
           # Si la ejecución es ambigua, hacer una union de tipos
           previousType = objectRef.reference.getType()
+
+          if previousType == None:
+            # Si no tiene tipo previo, asignar nil
+            previousType = NilType()
+
           unionType = UnionType(previousType, objectRef.getType())
           objectRef.reference.setType(unionType) # Asignar al padre la union
         
@@ -863,9 +868,11 @@ class SemanticChecker(CompiscriptListener):
               self.addSemanticError(error)
               ctx.type = error
               break
-            elif node_type.equalsType(FunctionType):
-              # Obtener el tipo de retorno de la función
+            elif node_type.strictEqualsType(FunctionType):
+              # Obtener el tipo de retorno de la función (solo si es exclusivamente una función)
+              # Si es any, se mantiene el tipo any
               node_type = node_type.returnType
+
 
           elif lexeme == ".":
             # Se está accediendo a un atributo de un objeto
@@ -874,7 +881,7 @@ class SemanticChecker(CompiscriptListener):
               break
 
             # Verificar si el identificador es null
-            if node_type.equalsType(NilType):
+            if node_type.strictEqualsType(NilType):
               # error semántico
               error = SemanticError("No se puede acceder a un atributo de un objeto nulo.", line, column)
               self.addSemanticError(error)

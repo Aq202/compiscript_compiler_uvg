@@ -1,8 +1,12 @@
-class CompilerError(Exception):
+from DataType import DataType
+class CompilerError(Exception, DataType):
     def __init__(self, message):
         self.message = message
 
     def equalsType(self, __class__):
+        return isinstance(self, __class__)
+    
+    def strictEqualsType(self, __class__):
         return isinstance(self, __class__)
 
     def __str__(self):

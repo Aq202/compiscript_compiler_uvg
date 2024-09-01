@@ -1,7 +1,8 @@
 from enum import Enum
-from abc import ABC, abstractmethod
 import uuid
 from copy import deepcopy
+from DataType import DataType
+from Errors import CompilerError
 class TypesNames(Enum):
 
   NUMBER = "NUMBER"
@@ -25,16 +26,6 @@ class ScopeType(Enum):
   CONDITIONAL = "conditional"
   GLOBAL = "global"
 
-class DataType(ABC):
-    
-    @abstractmethod
-    def getType(self):
-        pass
-    
-    @abstractmethod
-    def equalsType(self, __class__):
-        pass
-    
 class NilType(DataType):
 
   def __init__(self):
@@ -45,6 +36,9 @@ class NilType(DataType):
     return self
   
   def equalsType(self, __class__):
+    return __class__ == NilType
+  
+  def strictEqualsType(self, __class__):
     return __class__ == NilType
 
   def __eq__(self, other):
@@ -66,7 +60,10 @@ class AnyType(DataType):
     return self
   
   def equalsType(self, __class__):
-    return  __class__ != NilType
+    return  __class__ != NilType and __class__ != CompilerError
+  
+  def strictEqualsType(self, __class__):
+    return __class__ == AnyType
   
   def __repr__(self) -> str:
     return f"AnyType()"
@@ -92,6 +89,13 @@ class UnionType(DataType):
   def equalsType(self, __class__):
     return __class__ == AnyType or any([t.equalsType(__class__) for t in self.types])
   
+  def strictEqualsType(self, __class__):
+    if len(self.types) != 1:
+      return False
+    
+    return self.types[0].strictEqualsType(__class__)
+    
+  
   def includesType(self, type):
     print([isinstance(typeObj, type) for typeObj in self.types])
     return any(isinstance(typeObj, type) for typeObj in self.types)
@@ -114,6 +118,8 @@ class PrimitiveType(DataType):
   def equalsType(self, __class__):
     return __class__ == AnyType or isinstance(self, __class__)
   
+  def strictEqualsType(self, __class__):
+    return isinstance(self, __class__)
 
 class NumberType(PrimitiveType):
   def __init__(self):
@@ -151,6 +157,9 @@ class ArrayType(DataType):
     def equalsType(self, __class__):
       return __class__ == AnyType or isinstance(self, __class__)
     
+    def strictEqualsType(self, __class__):
+      return isinstance(self, __class__)
+    
     def __eq__(self, other):
       # Sobreescribir __eq__ para que todos los objetos de ArrayType sean iguales
       return isinstance(other, ArrayType)
@@ -181,6 +190,9 @@ class FunctionType:
     def equalsType(self, __class__):
       return __class__ == AnyType or isinstance(self, __class__)
     
+    def strictEqualsType(self, __class__):
+      return isinstance(self, __class__)
+    
     def setReturnType(self, returnType, preventOverwrite = False):
       if self.blockReturnTypeChange == True:
         return
@@ -210,6 +222,9 @@ class ClassType(DataType):
     # Para clases, solo se compara si son exactamente iguales
     return __class__ == ClassType
   
+  def strictEqualsType(self, __class__):
+    return __class__ == ClassType
+  
   def getType(self):
     return self
   
@@ -236,6 +251,9 @@ class InstanceType(DataType):
   def equalsType(self, __class__):
     return __class__ == AnyType or isinstance(self, __class__)
   
+  def strictEqualsType(self, __class__):
+    return isinstance(self, __class__)
+  
   def __repr__(self) -> str:
     return f"InstanceType(classType={self.classType})"
   
@@ -260,6 +278,9 @@ class ObjectType:
 
   def equalsType(self, __class__):
     return __class__ == AnyType or isinstance(self.type, __class__)
+  
+  def strictEqualsType(self, __class__):
+    return isinstance(self.type, __class__)
 
   def setType(self, type):
     self.type = type
@@ -613,7 +634,7 @@ class Scope:
         if elementStop.name in scope.objectInheritances and scope.objectInheritances[elementStop.name] == elementStop:
           return False
 
-      if scope.type in [ScopeType.FUNCTION, ScopeType.CONDITIONAL, ScopeType.LOOP]:
+      if scope.type in [ScopeType.FUNCTION, ScopeType.CONDITIONAL, ScopeType.LOOP, ScopeType.CONSTRUCTOR]:
         return True
       
       scope = scope.parent
