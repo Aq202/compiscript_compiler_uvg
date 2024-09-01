@@ -467,7 +467,7 @@ class Scope:
     Busca y retorna una clase en el scope actual y en scopes padres.
     Si no la encuentra retorna None
     """
-    scope = SymbolTable.currentScope
+    scope = self
     while scope is not None:
       for classObj in scope.elements.values():
         if isinstance(classObj, ClassType) and classObj.name == name:
@@ -651,61 +651,53 @@ class Scope:
 
 class SymbolTable:
 
-  globalScope = Scope(None, 0, ScopeType.GLOBAL)
-  
-  currentScope = globalScope
-  nextBlockType = None
+  def __init__(self):
+    self.globalScope = Scope(None, 0, ScopeType.GLOBAL)
+    self.currentScope = self.globalScope
 
-  @staticmethod
-  def createScope(type):
-    return Scope(SymbolTable.currentScope, SymbolTable.currentScope.level + 1, type)
+  def createScope(self, type):
+    return Scope(self.currentScope, self.currentScope.level + 1, type)
   
-  @staticmethod
-  def createScopeAndSwitch(type):
-    newScope = SymbolTable.createScope()
-    SymbolTable.setScope(newScope)
+  def createScopeAndSwitch(self, type):
+    newScope = self.createScope(type)
+    self.setScope(newScope)
     return newScope
   
-  @staticmethod
-  def setScope(scope):
-    SymbolTable.currentScope = scope
-    print("\n***** SCOPE MODIFICADO *****\n",SymbolTable.str(),"\n")
+  def setScope(self, scope):
+    self.currentScope = scope
+    print("\n***** SCOPE MODIFICADO *****\n",self.str(),"\n")
 
   
-  @staticmethod
-  def returnToParentScope():
-    SymbolTable.setScope(SymbolTable.currentScope.parent)
+  def returnToParentScope(self):
+    self.setScope(self.currentScope.parent)
 
-  @staticmethod
-  def addClassToCurrentScope(name, bodyScope, parent = None):
+  def addClassToCurrentScope(self, name, bodyScope, parent = None):
     """
     Crea una definición de clase, guardando el nombre, el bodyScope (scope propio de la clase)
     y el padre de la clase (si es que tiene)
     """
-    SymbolTable.currentScope.addClass(name, bodyScope, parent)
+    self.currentScope.addClass(name, bodyScope, parent)
 
-  @staticmethod
-  def addFunctionToCurrentScope(name):
+  def addFunctionToCurrentScope(self, name):
     """
     Crea una definición de función, guardando el nombre.
     Los parámetros y el bodyScope se agregan con setters.
     """
-    return SymbolTable.currentScope.addFunction(name)
+    return self.currentScope.addFunction(name)
 
-  def addObjectToCurrentScope(name, type):
+  def addObjectToCurrentScope(self, name, type):
     """
     Crea una definición de objeto, guardando el nombre y el tipo.
     """
-    SymbolTable.currentScope.addObject(name, type)
+    self.currentScope.addObject(name, type)
   
 
-  @staticmethod
-  def str() -> str:
+  def str(self) -> str:
     """
     Imprime todos los scopes de la tabla de símbolos.
     Comienza del scope actual y finaliza en el global.
     """
-    scope = SymbolTable.currentScope
+    scope = self.currentScope
     result = "Symbol Table:"
     while scope is not None:
       result += f"\n{scope}"

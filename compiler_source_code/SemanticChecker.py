@@ -10,6 +10,7 @@ class SemanticChecker(CompiscriptListener):
     def __init__(self) -> None:
       super().__init__()
 
+      self.symbolTable = SymbolTable()
       self.errors = []
       self.params = ParamsTree()
 
@@ -24,7 +25,7 @@ class SemanticChecker(CompiscriptListener):
 
     def exitProgram(self, ctx: CompiscriptParser.ProgramContext):
       super().exitProgram(ctx)
-      print(SymbolTable.str())
+      print(self.symbolTable.str())
 
 
     def enterDeclaration(self, ctx: CompiscriptParser.DeclarationContext):
@@ -57,7 +58,7 @@ class SemanticChecker(CompiscriptListener):
           parentClassNode = identifiers[1]
 
           # Verificar si la clase heredada existe
-          parentClassDef = SymbolTable.currentScope.searchClass(parentClassNode.getText())
+          parentClassDef = self.symbolTable.currentScope.searchClass(parentClassNode.getText())
           if parentClassDef == None:
             # error semántico
             parentClassToken = parentClassNode.getSymbol()
@@ -66,11 +67,11 @@ class SemanticChecker(CompiscriptListener):
             
 
         # Crear scope para la clase y añadirlo al scope actual
-        classScope = SymbolTable.createScope(ScopeType.CLASS)
-        SymbolTable.addClassToCurrentScope(className, classScope, parentClassDef)
+        classScope = self.symbolTable.createScope(ScopeType.CLASS)
+        self.symbolTable.addClassToCurrentScope(className, classScope, parentClassDef)
 
         # Cambiar al scope de la clase
-        SymbolTable.setScope(classScope)
+        self.symbolTable.setScope(classScope)
 
 
     def exitClassDecl(self, ctx: CompiscriptParser.ClassDeclContext):
@@ -80,7 +81,7 @@ class SemanticChecker(CompiscriptListener):
       super().exitClassDecl(ctx)
 
       # Volver al scope padre
-      SymbolTable.returnToParentScope()
+      self.symbolTable.returnToParentScope()
 
 
     def enterFunDecl(self, ctx: CompiscriptParser.FunDeclContext):
@@ -111,7 +112,7 @@ class SemanticChecker(CompiscriptListener):
       identifierName = identifierToken.text
 
       # Verificar si la variable ya ha sido declarada (exclusivamente en dicho scope)
-      if SymbolTable.currentScope.searchElement(identifierName, searchInParentScopes=False, searchInParentClasses=False):
+      if self.symbolTable.currentScope.searchElement(identifierName, searchInParentScopes=False, searchInParentClasses=False):
         # error semántico
         error = SemanticError(f"El identificador '{identifierName}' ya ha sido declarado.", identifierToken.line, identifierToken.column)
         self.addSemanticError(error)
@@ -126,7 +127,7 @@ class SemanticChecker(CompiscriptListener):
         varType = NilType()
 
       # Agregar variable al scope actual
-      SymbolTable.currentScope.addObject(identifierName, varType)
+      self.symbolTable.currentScope.addObject(identifierName, varType)
 
 
     def enterStatement(self, ctx: CompiscriptParser.StatementContext):
@@ -141,7 +142,7 @@ class SemanticChecker(CompiscriptListener):
       super().enterBreakStmt(ctx)
 
       # Verificar que el break esté dentro de un loop
-      if not SymbolTable.currentScope.isInsideLoop():
+      if not self.symbolTable.currentScope.isInsideLoop():
         # error semántico
         line = ctx.start.line
         column = ctx.start.column
@@ -158,7 +159,7 @@ class SemanticChecker(CompiscriptListener):
       super().enterContinueStmt(ctx)
 
       # Verificar que el continue esté dentro de un loop
-      if not SymbolTable.currentScope.isInsideLoop():
+      if not self.symbolTable.currentScope.isInsideLoop():
         # error semántico
         line = ctx.start.line
         column = ctx.start.column
@@ -269,7 +270,7 @@ class SemanticChecker(CompiscriptListener):
       super().exitReturnStmt(ctx)
 
       # Objeto FunctionType que corresponde al scope función que contiene la sentencia 'return'
-      functionDef = SymbolTable.currentScope.getParentFunction()
+      functionDef = self.symbolTable.currentScope.getParentFunction()
 
       if functionDef == None:
         # error semántico
@@ -290,7 +291,7 @@ class SemanticChecker(CompiscriptListener):
       
       # Verificar si la ubicación de ejecución es ambigua (el return podría o no ejecutarse)
       # Busca hasta encontrar el scope de la función que contiene la sentencia 'return'
-      isAmbiguous = SymbolTable.currentScope.isExecutionAmbiguous(functionDef)
+      isAmbiguous = self.symbolTable.currentScope.isExecutionAmbiguous(functionDef)
       
       # Obtener tipo de la expresión y asignar al tipo de retorno
       if not functionDef.returnTypeHasChanged:
@@ -343,7 +344,7 @@ class SemanticChecker(CompiscriptListener):
 
       # Tipo de bloque, especificado en definición previa de fun, loop o if
       blockType = parentParams.get("blockType") # Obtenida de parametros proveidos de nodo superior
-      blockScope = SymbolTable.createScope(blockType)
+      blockScope = self.symbolTable.createScope(blockType)
 
       # Intenta obtener la referencia a una función de parametros proveidos por nodo superior
       # Si es asi, se le asigna el scope del bloque a la definición de la función
@@ -359,7 +360,7 @@ class SemanticChecker(CompiscriptListener):
         functionDef.setBodyScope(blockScope)
 
       # Cambiar al scope del bloque
-      SymbolTable.setScope(blockScope)
+      self.symbolTable.setScope(blockScope)
 
 
     def exitBlock(self, ctx: CompiscriptParser.BlockContext):
@@ -371,15 +372,15 @@ class SemanticChecker(CompiscriptListener):
       self.params.removeNodeParams()
 
       # Si existen copias locales de objetos o params heredados
-      objectInheritances = SymbolTable.currentScope.getInheritedObjectsList()
-      propsInheritances = SymbolTable.currentScope.getInheritedPropertiesList()
+      objectInheritances = self.symbolTable.currentScope.getInheritedObjectsList()
+      propsInheritances = self.symbolTable.currentScope.getInheritedPropertiesList()
       for objectRef in objectInheritances + propsInheritances:
 
         if objectRef.reference == None:
           continue
         
         # Verificar si la ejecución es ambigua
-        isAmbiguous = SymbolTable.currentScope.isExecutionAmbiguous(objectRef.reference)
+        isAmbiguous = self.symbolTable.currentScope.isExecutionAmbiguous(objectRef.reference)
 
         if isAmbiguous:
           # Si la ejecución es ambigua, hacer una union de tipos
@@ -399,7 +400,7 @@ class SemanticChecker(CompiscriptListener):
 
 
       # Volver al scope padre
-      SymbolTable.returnToParentScope()
+      self.symbolTable.returnToParentScope()
 
 
     def enterFunAnon(self, ctx: CompiscriptParser.FunAnonContext):
@@ -408,7 +409,7 @@ class SemanticChecker(CompiscriptListener):
       _, nodeParams = self.params.initNodeParams()
 
       # Crear y agregar una función anonima
-      functionDef = SymbolTable.currentScope.addAnonymousFunction()
+      functionDef = self.symbolTable.currentScope.addAnonymousFunction()
 
       # Indicar que el siguiente bloque es una función en parametros
       nodeParams.add("blockType", ScopeType.FUNCTION) 
@@ -423,7 +424,7 @@ class SemanticChecker(CompiscriptListener):
       self.params.removeNodeParams()
 
       # Retornar el tipo de la función (última creada) y eliminar de la tabla de símbolos
-      functionDef = SymbolTable.currentScope.popLastFunction()
+      functionDef = self.symbolTable.currentScope.popLastFunction()
       ctx.type = functionDef.getType()
 
 
@@ -490,12 +491,12 @@ class SemanticChecker(CompiscriptListener):
         identifier = ctx.IDENTIFIER().getText() # identificador del atributo o variable
         
         # Obtener primero objeto solo en el scope actual
-        paramRef = SymbolTable.currentScope.getObject(identifier, searchInParentScopes=False)
+        paramRef = self.symbolTable.currentScope.getObject(identifier, searchInParentScopes=False)
         isLocal = paramRef != None
 
         if not isLocal:
           # Buscar en scopes padres
-          paramRef = SymbolTable.currentScope.getObject(identifier, searchInParentScopes=True)
+          paramRef = self.symbolTable.currentScope.getObject(identifier, searchInParentScopes=True)
 
         # Verificar si el identificador existe en el scope actual
         if paramRef == None:
@@ -510,7 +511,7 @@ class SemanticChecker(CompiscriptListener):
         # Actualizar el tipo de la variable
         if not isLocal:
           # Si no es local, se crea (o modifica) una copia local del objeto heredado
-          SymbolTable.currentScope.modifyInheritedObjectType(paramRef, assignmentValueType)
+          self.symbolTable.currentScope.modifyInheritedObjectType(paramRef, assignmentValueType)
           
         else:
           # Si es local, se modifica el objeto local
@@ -774,7 +775,7 @@ class SemanticChecker(CompiscriptListener):
       className = classNameToken.getText()
 
       # Verificar si la clase existe
-      classDef = SymbolTable.currentScope.searchClass(className)
+      classDef = self.symbolTable.currentScope.searchClass(className)
       line = ctx.start.line
       column = ctx.start.column
 
@@ -983,9 +984,9 @@ class SemanticChecker(CompiscriptListener):
             ctx.type = NilType()
           elif lexeme == "this":
             # Verificar si el scope actual es un método
-            if SymbolTable.currentScope.getParentMethod() != None:
+            if self.symbolTable.currentScope.getParentMethod() != None:
               # Obtener la clase a la que pertenece el método y crear un tipo instancia
-              classDef = SymbolTable.currentScope.getParentClass()
+              classDef = self.symbolTable.currentScope.getParentClass()
               instanceDef = InstanceType(classDef)
               ctx.type = instanceDef
               
@@ -999,10 +1000,10 @@ class SemanticChecker(CompiscriptListener):
 
             error = None
             # Verificar si el scope actual es una clase
-            if SymbolTable.currentScope.getParentMethod() != None:
+            if self.symbolTable.currentScope.getParentMethod() != None:
               
               # Verificar si la clase padre existe
-              classScope = SymbolTable.currentScope.parent
+              classScope = self.symbolTable.currentScope.parent
               parentClassDef = classScope.reference.parent
               if parentClassDef != None:
                 superActive = True
@@ -1030,7 +1031,7 @@ class SemanticChecker(CompiscriptListener):
           
           elif type == CompiscriptParser.IDENTIFIER:
             # Verificar si el identificador existe en el scope actual
-            elemType = SymbolTable.currentScope.getElementType(lexeme)
+            elemType = self.symbolTable.currentScope.getElementType(lexeme)
             if elemType != None:
               ctx.type = elemType
             else:
@@ -1072,8 +1073,8 @@ class SemanticChecker(CompiscriptListener):
         functionName = CompilerError("No se ha definido el nombre de la función")
 
       # Si el scope actual es una clase, verificar si la función es un constructor
-      if functionName == "init" and SymbolTable.currentScope.isClassScope():
-        classDef = SymbolTable.currentScope.reference
+      if functionName == "init" and self.symbolTable.currentScope.isClassScope():
+        classDef = self.symbolTable.currentScope.reference
         
         if classDef.constructor == None:
           # Agregar constructor a la clase
@@ -1093,7 +1094,7 @@ class SemanticChecker(CompiscriptListener):
 
       
       # No es un constructor (o hay error al agregar constructor), agregar función normal
-      functionDef = SymbolTable.currentScope.addFunction(functionName)
+      functionDef = self.symbolTable.currentScope.addFunction(functionName)
       nodeParams.add("reference", functionDef) # Guardar referencia a la función (para hijos)
 
       # Indica que el siguiente bloque es el cuerpo de la función
