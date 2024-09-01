@@ -470,6 +470,12 @@ class Scope:
     
     # Verificar que el scope padre sea una clase
     return self.parent.isClassScope()
+  
+  def isLoopScope(self):
+    """
+    Verifica si el scope corresponde a un loop
+    """
+    return self.type == ScopeType.LOOP
 
   def getParentFunction(self, searchInParentScopes = True):
     """
@@ -537,6 +543,20 @@ class Scope:
       
     return None
   
+  def isInsideLoop(self, searchInParentScopes = True):
+    """
+    Verifica si el scope actual se encuentra dentro de un loop
+    """
+    scope = self
+    while scope is not None:
+      if scope.isLoopScope():
+        return True
+      if not searchInParentScopes:
+        break
+      scope = scope.parent
+    return False
+    
+
   def getLastFunction(self):
     """
     Retorna la última función definida (si existe) en el scope actual.

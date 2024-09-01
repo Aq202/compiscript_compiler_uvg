@@ -1,2 +1,4 @@
 */prueba.txt
 */__pycache__
+*/__pycache__/*
+compiler_source_code/antlr/__pycache__/*

@@ -138,7 +138,16 @@ class SemanticChecker(CompiscriptListener):
 
 
     def enterBreakStmt(self, ctx: CompiscriptParser.BreakStmtContext):
-      return super().enterBreakStmt(ctx)
+      super().enterBreakStmt(ctx)
+
+      # Verificar que el break esté dentro de un loop
+      if not SymbolTable.currentScope.isInsideLoop():
+        # error semántico
+        line = ctx.start.line
+        column = ctx.start.column
+        error = SemanticError("La sentencia 'break' solo puede ser usada dentro de un loop.", line, column)
+        self.addSemanticError(error)
+        ctx.type = error
     
 
     def exitBreakStmt(self, ctx: CompiscriptParser.BreakStmtContext):
@@ -146,7 +155,16 @@ class SemanticChecker(CompiscriptListener):
     
 
     def enterContinueStmt(self, ctx: CompiscriptParser.ContinueStmtContext):
-      return super().enterContinueStmt(ctx)
+      super().enterContinueStmt(ctx)
+
+      # Verificar que el continue esté dentro de un loop
+      if not SymbolTable.currentScope.isInsideLoop():
+        # error semántico
+        line = ctx.start.line
+        column = ctx.start.column
+        error = SemanticError("La sentencia 'continue' solo puede ser usada dentro de un loop.", line, column)
+        self.addSemanticError(error)
+        ctx.type = error
     
 
     def exitContinueStmt(self, ctx: CompiscriptParser.ContinueStmtContext):
