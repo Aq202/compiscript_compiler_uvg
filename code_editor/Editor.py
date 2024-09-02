@@ -74,6 +74,11 @@ class Editor(QsciScintilla):
         self.SendScintilla(QsciScintilla.SCI_SETHSCROLLBAR, 0)
 
         self.setEolMode(QsciScintilla.EolUnix)
+        
+        self.setTabWidth(2) # 2 espacios por tab
+        
+        self.setAutoIndent(True)
+
 
 
     def on_margin_clicked(self, nmargin, nline, modifiers):
