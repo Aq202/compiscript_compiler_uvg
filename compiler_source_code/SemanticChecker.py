@@ -1,7 +1,7 @@
 from antlr4 import *
 from antlr.CompiscriptListener import CompiscriptListener
 from antlr.CompiscriptParser import CompiscriptParser
-from SymbolTable import SymbolTable, FunctionType, ScopeType, AnyType, NumberType, StringType, BoolType, NilType, UnionType, ArrayType, InstanceType
+from SymbolTable import SymbolTable, FunctionType, ScopeType, AnyType, NumberType, StringType, BoolType, NilType, UnionType, ArrayType, InstanceType, TypesNames
 from Errors import SemanticError, CompilerError
 from ParamsTree import ParamsTree
 
@@ -667,8 +667,8 @@ class SemanticChecker(CompiscriptListener):
           
           if type != None  and not type.equalsType(childType.__class__):
             # error semántico. Los tipos no son comparables
-            line = ctx.start.line
-            column = ctx.start.column
+            line = child.start.line
+            column = child.start.column
             error = SemanticError(f"Los tipos '{type.name}' y '{childType.name}' no son comparables.", line, column)
             self.addSemanticError(error)
             ctx.type = error
@@ -686,31 +686,67 @@ class SemanticChecker(CompiscriptListener):
     def exitTerm(self, ctx: CompiscriptParser.TermContext):
       super().exitTerm(ctx)
 
-      # Obtener el tipo del primer factor y asignar al nodo
-      child1 = ctx.factor(0)
-      ctx.type = child1.type if child1 else None
-
+      # Si solo hay un nodo, obtener tipo y asignar al nodo
       if len(ctx.children) <= 1:
+        child1 = ctx.factor(0)
+        ctx.type = child1.type if child1 else None
         return
 
-      # Si hay más de un factor, verificar que todos sean numéricos
-
+      # Si hay más de un factor, verificar tipos
+      
+      operator = ctx.getChild(1).getText() # Operador inicial (+ | -)
+        
+      childTypes = [] # Va a almacenar tuplas con los tipos que puede adoptar cada nodo (number o string y number)      
+      hasErrors = False
+      
       for child in ctx.getChildren():
-        if not isinstance(child, tree.Tree.TerminalNode):
+        
+        validTypes = (NumberType, StringType) if operator == "+" else (NumberType,)
+        typesNames = (TypesNames.NUMBER.value, TypesNames.STRING.value) if operator == "+" else (TypesNames.NUMBER.value,)
+    
+        if not isinstance(child, tree.Tree.TerminalNode): # terminales (+ | -)
 
           childType = child.type
           
           if childType.equalsType(CompilerError):
             # Si uno de los tipos es un error, solo ignorar
             ctx.type = childType
+            hasErrors = True
           
-          elif not childType.equalsType(NumberType):
+          elif not childType.equalsType(validTypes):
             # error semántico. Alguno de los factores no es numérico
-            line = ctx.start.line
-            column = ctx.start.column
-            error = SemanticError("El factor debe ser de tipo numérico.", line, column)
+            line = child.start.line
+            column = child.start.column
+            error = SemanticError(f"El factor debe ser de tipo {' o '.join(typesNames)}.", line, column)
             self.addSemanticError(error)
             ctx.type = error
+            hasErrors = True
+          
+          else:
+            
+            # Determinar que tipo es el compatible (o si son ambos)
+            if childType.strictEqualsType(NumberType):
+              childTypes.append(NumberType)
+            elif childType.strictEqualsType(StringType):
+              childTypes.append(StringType)
+            else:
+              childTypes.append(AnyType)
+        
+        else:
+          operator = child.getText() # Cambiar operador
+          
+      if not hasErrors:
+        
+        # Inferir tipo: Si hay un string estricto, todo es string
+        # Si hay un any y no hay strings, puede ser ambos tipos
+        # si solo hay numbers, el resultado es number
+        
+        if StringType in childTypes:
+          ctx.type = StringType()
+        elif AnyType in childTypes:
+          ctx.type = UnionType(NumberType(), StringType())
+        else:
+          ctx.type = NumberType()
 
 
     def enterFactor(self, ctx: CompiscriptParser.FactorContext):
@@ -720,14 +756,15 @@ class SemanticChecker(CompiscriptListener):
     def exitFactor(self, ctx: CompiscriptParser.FactorContext):
       super().exitFactor(ctx)
       
-      # Obtener el tipo del primer factor y asignar al nodo
-      child1 = ctx.unary(0)
-      ctx.type = child1.type if child1 else None
-
+      # Si solo hay un nodo, retornar su tipo
       if len(ctx.children) <= 1:
+        child1 = ctx.unary(0)
+        ctx.type = child1.type if child1 else None
         return
 
       # Si hay más de un factor, verificar que todos sean numéricos
+      
+      ctx.type = NumberType() # Tipo numérico por defecto (puede cambiar a error)
 
       for child in ctx.getChildren():
         if not isinstance(child, tree.Tree.TerminalNode):
@@ -740,8 +777,8 @@ class SemanticChecker(CompiscriptListener):
           
           elif not childType.equalsType(NumberType):
             # error semántico. Alguno de los factores no es numérico
-            line = ctx.start.line
-            column = ctx.start.column
+            line = child.start.line
+            column = child.start.column
             error = SemanticError("El factor debe ser de tipo numérico.", line, column)
             self.addSemanticError(error)
             ctx.type = error

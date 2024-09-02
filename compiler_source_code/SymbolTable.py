@@ -5,7 +5,7 @@ from DataType import DataType
 from Errors import CompilerError
 class TypesNames(Enum):
 
-  NUMBER = "NUMBER"
+  NUMBER = "number"
   BOOL = "bool"
   CLASS = "class"
   FUNCTION = "function"
@@ -244,6 +244,7 @@ class ClassType(DataType):
 class InstanceType(DataType):
   def __init__(self, classType):
     self.classType = classType
+    self.name = classType.name
 
   def getType(self):
     return self
