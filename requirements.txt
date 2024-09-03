@@ -1,0 +1,4 @@
+PyQt5==5.15.9
+QScintilla==2.14.1
+antlr4-python3-runtime==4.13.0
+anytree==2.12.1

@@ -36,6 +36,6 @@ Compiscript compilator.
 ## Dependencies
 - Python 3.x
 - PyQt5
-- QSyntax
+- QScintilla
 - antlr4-python3-runtime
 - anytree (debbugging)
