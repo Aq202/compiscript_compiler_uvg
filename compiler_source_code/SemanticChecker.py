@@ -49,7 +49,8 @@ class SemanticChecker(CompiscriptListener):
                         if isinstance(child, tree.Tree.TerminalNodeImpl) 
                         and child.symbol.type == CompiscriptParser.IDENTIFIER]
           
-        className = identifiers[0].getText()
+        classToken = identifiers[0].getSymbol()
+        className = classToken.text
 
         # Obtener clase heredada
         parentClassNode = None
@@ -66,9 +67,17 @@ class SemanticChecker(CompiscriptListener):
             self.addSemanticError(error)
             
 
-        # Crear scope para la clase y añadirlo al scope actual
+        # Crear scope para la clase
         classScope = self.symbolTable.createScope(ScopeType.CLASS)
-        self.symbolTable.addClassToCurrentScope(className, classScope, parentClassDef)
+        
+        # Verificar si el nombre de la clase ya ha sido declarado (solo en el scope actual)
+        if self.symbolTable.currentScope.searchElement(className, searchInParentScopes=False, searchInParentClasses=False):
+          # error semántico
+          error = SemanticError(f"El identificador '{className}' ya ha sido declarado.", classToken.line, classToken.column)
+          self.addSemanticError(error)
+          ctx.type = error
+        else:
+          self.symbolTable.addClassToCurrentScope(className, classScope, parentClassDef)
 
         # Cambiar al scope de la clase
         self.symbolTable.setScope(classScope)
