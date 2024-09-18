@@ -208,13 +208,50 @@ class FunctionType:
       returnType = self.returnType if self.returnType != self else "FunctionType(SELF)"
       return f"FunctionType(name={self.name}, params={self.params}, returnType={returnType})"
 
+class FunctionOverload(DataType):
+  def __init__(self, functionDef):
+    self.overloads = [functionDef]
+  
+  def addOverload(self, functionDef):
+    """
+    Agrega una definición de función a la lista de sobrecargas.
+    La sobrecarga más reciente se agrega al inicio de la lista, sobreescribiendo las anteriores con
+    mismo # de parámetros.
+    """
+    self.overloads.insert(0, functionDef)
+  
+  def getOverloads(self):
+    return self.overloads
+  
+  def getFunctionByParams(self, numParams):
+    """
+    Retorna la definición de la función que tiene el número de parámetros indicado.
+    Si no existe una definición con ese número de parámetros, retorna la primera definición.
+    """
+    for overload in self.overloads:
+      if len(overload.params) == numParams:
+        return overload
+    return self.overloads[0]
+  
+  def getType(self):
+    return self
+  
+  def equalsType(self, __class__):
+    return __class__ == AnyType or isinstance(self.overloads[0], __class__) or isinstance(self, __class__)
+  
+  def strictEqualsType(self, __class__):
+      return isinstance(self, __class__)
+  
+  def __repr__(self) -> str:
+    return f"FunctionOverload(overloads={self.overloads})"
+  
 class ClassType(DataType):
 
   def __init__(self, name, bodyScope, parent = None):
     self.name = name
     self.parent = parent # define the parent class (inheritance)
     self.bodyScope = bodyScope # Scope of the class body
-    self.constructor = None
+    self.constructor = None # Se pueden guardar varios constructores, con distintos # de params
 
     bodyScope.reference = self # Save reference to class definition in his body scope
 
@@ -239,7 +276,7 @@ class ClassType(DataType):
     return funcDef
     
   def __repr__(self) -> str:
-    return f"ClassType(name={self.name}, parent={self.parent})"
+    return f"ClassType(name={self.name}, parent={self.parent}, constructor={self.constructor})"
 
 class InstanceType(DataType):
   def __init__(self, classType):
@@ -301,6 +338,7 @@ class Scope:
     self.type = type
 
     self.elements = dict()
+    self.functions = dict() # Deberá ser {name: [FunctionType]}
   
 
     # Variables heredadas de un scope padre. Se agregan cuando se modifica el valor de una variable en un scope hijo.
@@ -311,15 +349,19 @@ class Scope:
     self.reference = None
 
 
-  def addFunction(self, name):
+  def addFunction(self, functionObj):
     """
     Crea una definición de función y la agrega a la lista de funciones del scope
     Si el scope actual es una clase, la función se agrega a la lista de métodos de la clase.
     @return FunctionType. Retorna el objeto de la función creada
     """
-    functionObj = FunctionType(name)
+    name = functionObj.name
+    
+    if name not in self.functions:
+      self.functions[name] = FunctionOverload(functionObj)
+    else:
+      self.functions[name].addOverload(functionObj)
 
-    self.elements[name] = functionObj
     return functionObj
   
   def addAnonymousFunction(self):
@@ -383,6 +425,7 @@ class Scope:
     @param searchInParentScopes: Bool. Buscar en los scopes padres
     @param searchInParentClasses: Bool. Buscar en las clases padres si el scope actual es una clase
     @return Objeto del elemento buscado. Si no lo encuentra retorna None.
+    IMPORTANTE: si es una función, retorna una lista de funciones
     """
     scope = self
     while scope is not None:
@@ -390,6 +433,8 @@ class Scope:
       # Buscar en las listas de elementos
       if name in scope.elements:
         return scope.elements[name]
+      if name in scope.functions:
+        return scope.functions[name] # Retorna una lista de funciones
       if name in scope.objectInheritances:
         return scope.objectInheritances[name]
       
@@ -443,25 +488,6 @@ class Scope:
 
     return None
   
-
-  def getFunction(self, name, searchInParentScopes = True):
-    """
-    Retorna el objeto de una función en el scope actual o en scopes padres.
-    Si no lo encuentra retorna None
-    """
-    scope = self
-    while scope is not None:
-
-      # Buscar en las listas de funciones
-      if name in scope.elements and isinstance(scope.elements[name], FunctionType):
-        return scope.elements[name]
-
-      if not searchInParentScopes:
-        break
-
-      scope = scope.parent
-
-    return None
 
   def searchClass(self, name):
     """
@@ -592,23 +618,6 @@ class Scope:
     return False
     
 
-  def getLastFunction(self):
-    """
-    Retorna la última función definida (si existe) en el scope actual.
-    Si el scope es de tipo CLASS devuelve las funciones definidas como propiedades.
-    Si no hay funciones, retorna None.
-
-    IMPORTANTE: Si una función es redefinida, el orden se mantiene siempre, esta no se coloca al final.
-    """
-    scopeElements = self.elements
-
-    if len(scopeElements) == 0:
-      return None
-    
-    for elem in reversed(scopeElements.values()):
-      if isinstance(elem, FunctionType):
-        return elem
-
   def isExecutionAmbiguous(self, elementStop):
     """
     Verifica si el punto de ejecución actual podría o no ejecutarse. Un punto de ejecución es 
@@ -648,7 +657,7 @@ class Scope:
     return list(self.propertyInheritances.values())
 
   def __repr__(self):
-        return f"Scope(level={self.level}, type={self.type}, elements={self.elements}, objectInheritances={self.objectInheritances}, reference={self.reference}"
+        return f"Scope(level={self.level}, type={self.type}, elements={self.elements}, functions={self.functions}, objectInheritances={self.objectInheritances}, reference={self.reference}"
 
 class SymbolTable:
 

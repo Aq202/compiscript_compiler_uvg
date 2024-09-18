@@ -1,7 +1,7 @@
 from antlr4 import *
 from antlr.CompiscriptListener import CompiscriptListener
 from antlr.CompiscriptParser import CompiscriptParser
-from SymbolTable import SymbolTable, FunctionType, ScopeType, AnyType, NumberType, StringType, BoolType, NilType, UnionType, ArrayType, InstanceType, TypesNames
+from SymbolTable import SymbolTable, FunctionType, ScopeType, AnyType, NumberType, StringType, BoolType, NilType, UnionType, ArrayType, InstanceType, TypesNames, FunctionOverload
 from Errors import SemanticError, CompilerError
 from ParamsTree import ParamsTree
 
@@ -925,16 +925,22 @@ class SemanticChecker(CompiscriptListener):
               self.addSemanticError(error)
               ctx.type = error
               break
-            elif node_type.strictEqualsType(FunctionType):
+            elif node_type.strictEqualsType(FunctionType) or node_type.strictEqualsType(FunctionOverload) :
+              
+              obtainedParams = 0 if ctx.arguments(0) == None else len(ctx.arguments(0).expression())
+              
               functionDef = node_type
+              
+              # Si la función es una sobrecarga, obtener la función que corresponde a los argumentos
+              if node_type.strictEqualsType(FunctionOverload):
+                functionDef = node_type.getFunctionByParams(obtainedParams)
 
               # Obtener el tipo de retorno de la función (solo si es exclusivamente una función)
               # Si es any, se mantiene el tipo any
               node_type = functionDef.returnType
 
               # Si es estrictamente una función, se verifica el número de params
-              obtainedParams = 0 if ctx.arguments(0) == None else len(ctx.arguments(0).expression())
-
+  
               if obtainedParams != len(functionDef.params):
                 # error semántico, número incorrecto de parámetros
                 expectedParams = len(functionDef.params)
@@ -1140,8 +1146,20 @@ class SemanticChecker(CompiscriptListener):
 
       
       # No es un constructor (o hay error al agregar constructor), agregar función normal
-      functionDef = self.symbolTable.currentScope.addFunction(functionName)
-      nodeParams.add("reference", functionDef) # Guardar referencia a la función (para hijos)
+      functionObj = FunctionType(functionName)
+      
+      #verificar si el nombre de la función ya ha sido declarado (solo en el mismo scope)
+      elementFound = self.symbolTable.currentScope.searchElement(functionName, searchInParentScopes=False, searchInParentClasses=False)
+      if elementFound != None and not elementFound.equalsType(FunctionType):
+          # error semántico
+          error = SemanticError(f"El identificador '{functionName}' ya ha sido declarado.", ctx.start.line, ctx.start.column)
+          self.addSemanticError(error)
+          ctx.type = error
+      else:
+        # Solo agregar función si no hay otro id con el mismo nombre o si es una función (overloading o sobreescribir)
+        self.symbolTable.currentScope.addFunction(functionObj)
+        
+      nodeParams.add("reference", functionObj) # Guardar referencia a la función (para hijos)
 
       # Indica que el siguiente bloque es el cuerpo de la función
       nodeParams.add("blockType", ScopeType.FUNCTION)
