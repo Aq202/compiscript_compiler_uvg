@@ -527,6 +527,7 @@ class SemanticChecker(CompiscriptListener):
 
           paramRef.setType(assignmentValueType)
 
+        ctx.type = assignmentValueType
 
     def enterLogic_or(self, ctx: CompiscriptParser.Logic_orContext):
       return super().enterLogic_or(ctx)
