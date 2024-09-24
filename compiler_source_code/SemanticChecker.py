@@ -46,7 +46,7 @@ class SemanticChecker(CompiscriptListener):
 
         # Obtener el nombre de la clase y clase heredada
         identifiers = [child for child in ctx.children 
-                        if isinstance(child, tree.Tree.TerminalNodeImpl) 
+                        if isinstance(child, tree.Tree.TerminalNodeImpl)  # type: ignore
                         and child.symbol.type == CompiscriptParser.IDENTIFIER]
           
         classToken = identifiers[0].getSymbol()
@@ -113,7 +113,7 @@ class SemanticChecker(CompiscriptListener):
       super().exitVarDecl(ctx)
 
       # Validar que el nombre de la variable no sea un erro léxico
-      if isinstance(ctx.IDENTIFIER(), tree.Tree.ErrorNodeImpl):
+      if isinstance(ctx.IDENTIFIER(), tree.Tree.ErrorNodeImpl): # type: ignore
         return # Saltar validaciones semánticas de asignación de variable
       
       # Obtener nombre de variable
@@ -546,7 +546,7 @@ class SemanticChecker(CompiscriptListener):
 
       # Si hay más de un nodo, verificar que todos sean numéricos
       for child in ctx.getChildren():
-        if not isinstance(child, tree.Tree.TerminalNode):
+        if not isinstance(child, tree.Tree.TerminalNode): # type: ignore
 
           childType = child.type
           
@@ -580,7 +580,7 @@ class SemanticChecker(CompiscriptListener):
 
       # Si hay más de un nodo, verificar que todos sean numéricos
       for child in ctx.getChildren():
-        if not isinstance(child, tree.Tree.TerminalNode):
+        if not isinstance(child, tree.Tree.TerminalNode): # type: ignore
 
           childType = child.type
           
@@ -615,7 +615,7 @@ class SemanticChecker(CompiscriptListener):
       type = None
 
       for child in ctx.getChildren():
-        if not isinstance(child, tree.Tree.TerminalNode):
+        if not isinstance(child, tree.Tree.TerminalNode): # type: ignore
 
           childType = child.type
 
@@ -661,7 +661,7 @@ class SemanticChecker(CompiscriptListener):
       type = None
 
       for child in ctx.getChildren():
-        if not isinstance(child, tree.Tree.TerminalNode):
+        if not isinstance(child, tree.Tree.TerminalNode): # type: ignore
 
           childType = child.type
 
@@ -714,7 +714,7 @@ class SemanticChecker(CompiscriptListener):
         validTypes = (NumberType, StringType) if operator == "+" else (NumberType,)
         typesNames = (TypesNames.NUMBER.value, TypesNames.STRING.value) if operator == "+" else (TypesNames.NUMBER.value,)
     
-        if not isinstance(child, tree.Tree.TerminalNode): # terminales (+ | -)
+        if not isinstance(child, tree.Tree.TerminalNode): # type: ignore # terminales (+ | -)
 
           childType = child.type
           
@@ -777,7 +777,7 @@ class SemanticChecker(CompiscriptListener):
       ctx.type = NumberType() # Tipo numérico por defecto (puede cambiar a error)
 
       for child in ctx.getChildren():
-        if not isinstance(child, tree.Tree.TerminalNode):
+        if not isinstance(child, tree.Tree.TerminalNode): # type: ignore
 
           childType = child.type
           
@@ -909,7 +909,7 @@ class SemanticChecker(CompiscriptListener):
           node_type = primary_context.type
           primary_name = child.getText()
 
-        elif isinstance(child, tree.Tree.TerminalNode):
+        elif isinstance(child, tree.Tree.TerminalNode): # type: ignore
 
           token = child.getSymbol()
           lexeme = child.getText()
@@ -1019,7 +1019,7 @@ class SemanticChecker(CompiscriptListener):
       superActive = False # Indica si el nodo previo fue el lexema "super"
 
       for child in ctx.getChildren():
-        if isinstance(child, tree.Tree.TerminalNode):
+        if isinstance(child, tree.Tree.TerminalNode): # type: ignore
 
           token = child.getSymbol()
           type = token.type
@@ -1112,7 +1112,7 @@ class SemanticChecker(CompiscriptListener):
       functionName = None
 
       for child in ctx.children:
-        if isinstance(child, tree.Tree.TerminalNodeImpl):
+        if isinstance(child, tree.Tree.TerminalNodeImpl): # type: ignore
           if child.symbol.type == CompiscriptParser.IDENTIFIER:
             functionName = child.getText()
             break
@@ -1184,7 +1184,7 @@ class SemanticChecker(CompiscriptListener):
       functionDef = parentParams.get("reference")
 
       for child in ctx.children:
-        if isinstance(child, tree.Tree.TerminalNodeImpl):
+        if isinstance(child, tree.Tree.TerminalNodeImpl): # type: ignore
           if child.symbol.type == CompiscriptParser.IDENTIFIER:
             # Los parametros de la función pueden repetirse, solo se tomará el último en cuenta
             parameterName = child.getText()
