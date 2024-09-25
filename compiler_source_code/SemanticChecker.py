@@ -843,6 +843,12 @@ class SemanticChecker(CompiscriptListener):
         self.addSemanticError(error)
         ctx.type = error
         return
+      elif classDef.constructor == None and obtainedParams != 0:
+        # error semántico, la clase no espera argumentos en el constructor (no existe constructor)
+        error = SemanticError(f"La clase '{className}' no espera argumentos en el constructor.", line, column)
+        self.addSemanticError(error)
+        ctx.type = error
+        return
       
       # Crear una instancia de la clase
       instanceDef = InstanceType(classDef)
