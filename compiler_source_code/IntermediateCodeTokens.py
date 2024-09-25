@@ -1,0 +1,7 @@
+NIL = "NIL"
+PLUS = "+"
+MINUS = "-"
+MULTIPLY = "*"
+DIVIDE = "/"
+CONCATENATE = "CONCAT"
+LABEL = "LABEL"

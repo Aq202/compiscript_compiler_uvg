@@ -4,7 +4,7 @@ from antlr.CompiscriptParser import CompiscriptParser
 from SymbolTable import SymbolTable, FunctionType, ScopeType, AnyType, NumberType, StringType, BoolType, NilType, UnionType, ArrayType, InstanceType, TypesNames, FunctionOverload
 from Errors import SemanticError, CompilerError
 from ParamsTree import ParamsTree
-
+from IntermediateCodeGenerator import IntermediateCodeGenerator
 class SemanticChecker(CompiscriptListener):
     
     def __init__(self) -> None:
@@ -13,6 +13,7 @@ class SemanticChecker(CompiscriptListener):
       self.symbolTable = SymbolTable()
       self.errors = []
       self.params = ParamsTree()
+      self.intermediateCodeGenerator = IntermediateCodeGenerator(self.symbolTable, self.errors)
 
     def addSemanticError(self, error):
       self.errors.append(error)
@@ -1084,9 +1085,9 @@ class SemanticChecker(CompiscriptListener):
           
           elif type == CompiscriptParser.IDENTIFIER:
             # Verificar si el identificador existe en el scope actual
-            elemType = self.symbolTable.currentScope.getElementType(lexeme)
-            if elemType != None:
-              ctx.type = elemType
+            element = self.symbolTable.currentScope.searchElement(lexeme, searchInParentScopes=True, searchInParentClasses=True)
+            if element != None:
+              ctx.type = element
             else:
               # error semántico
               error = SemanticError(f"El identificador '{lexeme}' no ha sido definido.", line, column)
@@ -1100,6 +1101,7 @@ class SemanticChecker(CompiscriptListener):
           # Es un nodo no terminal (funAnon, instanciation, expression o array)
           ctx.type = child.type
 
+      return self.intermediateCodeGenerator.exitPrimary(ctx)
 
     def enterFunction(self, ctx: CompiscriptParser.FunctionContext):
       """

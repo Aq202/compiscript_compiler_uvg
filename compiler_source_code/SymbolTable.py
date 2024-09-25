@@ -310,6 +310,7 @@ class ObjectType:
     self.name = name
     self.type = type
     self.reference = reference
+    self.value = None
 
   def getType(self):
     return self.type
@@ -325,10 +326,23 @@ class ObjectType:
 
   def setReference(self, reference):
     self.reference = reference
+    
+  def setValue(self, value):
+    """
+    El valor de un objeto deberá ser un valor primitivo o una "variable" (ObjectType)
+    No debe contener clases ni funciones.
+    """
+    
+    # Validar que es un tipo primitivo o un ObjectType
+    validTypes = (int, float, bool, str, ObjectType)
+    if not isinstance(value, validTypes):
+      raise ValueError(f"El valor de un objeto debe ser un tipo primitivo o un ObjectType. Se recibió {type(value)}")
+    
+    self.value = value
 
   def __repr__(self):
     reference = self.reference if self.reference != self else "ObjectType(SELF)"
-    return f"ObjectType(name={self.name}, type={self.type}, reference={reference})"
+    return f"ObjectType(name={self.name}, type={self.type}, reference={reference}, value={self.value})"
 
 class Scope:
   
@@ -339,6 +353,7 @@ class Scope:
 
     self.elements = dict()
     self.functions = dict() # Deberá ser {name: [FunctionType]}
+    self.temporaries = dict() # Variables temporales creadas en el scope
   
 
     # Variables heredadas de un scope padre. Se agregan cuando se modifica el valor de una variable en un scope hijo.
@@ -392,6 +407,12 @@ class Scope:
   def addObject(self, name, type):
     object = ObjectType(name, type)
     self.elements[name] = object
+    
+  def addTemporary(self, name, value):
+    temp = ObjectType(name, AnyType())
+    self.temporaries[name] = temp
+    temp.setValue(value)
+    return temp
 
   def modifyInheritedObjectType(self, originalObject, newType):
     """
@@ -419,7 +440,7 @@ class Scope:
 
       self.propertyInheritances[originalParam.name] = copy
 
-  def searchElement(self, name, searchInParentScopes = True, searchInParentClasses = True):
+  def searchElement(self, name, searchInParentScopes = True, searchInParentClasses = True, searchTemporaries = False):
     """
     Busca un elemento en el scope actual y padres (clase, funcion u objeto)
     @param searchInParentScopes: Bool. Buscar en los scopes padres
@@ -437,6 +458,8 @@ class Scope:
         return scope.functions[name] # Retorna una lista de funciones
       if name in scope.objectInheritances:
         return scope.objectInheritances[name]
+      if searchTemporaries and name in scope.temporaries:
+        return scope.temporaries[name]
       
       # Buscar en la clase padre si es una clase
       if searchInParentClasses and scope.isClassScope():
@@ -497,8 +520,11 @@ class Scope:
     scope = self
     while scope is not None:
       for classObj in scope.elements.values():
-        if isinstance(classObj, ClassType) and classObj.name == name:
-          return classObj
+        if classObj.name == name:
+          if isinstance(classObj, ClassType): # Si es directamente una clase
+            return classObj
+          elif classObj.strictEqualsType(ClassType): # Si es una variable que hace referencia a una clase
+            return classObj.getType()
       scope = scope.parent
 
     return None
