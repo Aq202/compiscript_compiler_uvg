@@ -132,7 +132,7 @@ class SemanticChecker(CompiscriptListener):
       # Obtener tipo de la variable
       varType = None
       if ctx.expression() != None:
-        varType = ctx.expression().type
+        varType = ctx.expression().type.getType()
       else:
         varType = NilType()
 
@@ -523,14 +523,6 @@ class SemanticChecker(CompiscriptListener):
       else:
         # Es una asignación a variable ya declarada
 
-
-        assignmentValueType = ctx.assignment().type
-        identifier = ctx.IDENTIFIER().getText() # identificador del atributo o variable
-        
-        
-        assignmentValueType = ctx.assignment().type
-        identifier = ctx.IDENTIFIER().getText() # identificador del atributo o variable
-        
         # Obtener primero objeto solo en el scope actual
         paramRef = self.symbolTable.currentScope.getObject(identifier, searchInParentScopes=False)
         isLocal = paramRef != None
