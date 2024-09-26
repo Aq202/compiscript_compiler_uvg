@@ -14,6 +14,9 @@ class CompilerError(Exception, DataType):
 
     def __repr__(self):
         return f"CompilerError(message={self.message!r})"
+    
+    def getType(self):
+        return self
 
 class SemanticError(CompilerError):
     def __init__(self, message, line, column):
