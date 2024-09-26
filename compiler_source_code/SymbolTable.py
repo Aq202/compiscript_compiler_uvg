@@ -209,8 +209,8 @@ class FunctionType:
       return f"FunctionType(name={self.name}, params={self.params}, returnType={returnType})"
 
 class FunctionOverload(DataType):
-  def __init__(self, functionDef):
-    self.overloads = [functionDef]
+  def __init__(self, *functionDef):
+    self.overloads = list(functionDef)
   
   def addOverload(self, functionDef):
     """
@@ -245,6 +245,13 @@ class FunctionOverload(DataType):
   def __repr__(self) -> str:
     return f"FunctionOverload(overloads={self.overloads})"
   
+  def copy(self):
+    """
+    Copia superficial.
+    Retorna una nueva instancia de FunctionOverload, manteniendo las referencias de objetos internos.
+    """
+    return FunctionOverload(*self.overloads)
+
 class ClassType(DataType):
 
   def __init__(self, name, bodyScope, parent = None):
@@ -254,6 +261,31 @@ class ClassType(DataType):
     self.constructor = None # Se pueden guardar varios constructores, con distintos # de params
 
     bodyScope.reference = self # Save reference to class definition in his body scope
+    
+    self.properties = []
+    self.methods = dict()
+    
+  def addProperty(self, name):
+    """
+    Se guarda el registro de que se creo una propiedad con el nombre indicado.
+    """
+    if name not in self.properties:
+      self.properties.append(name)
+    
+  def addMethod(self, name, functionObj):
+    """
+    Se guarda el registro de que se creo un método con el nombre indicado y parametros.
+    """
+    if name not in self.methods:
+      self.methods[name] = FunctionOverload(functionObj)
+    else:
+      self.methods[name].addOverload(functionObj)
+      
+  def searchProperty(self, name):
+    return self.properties.get(name)
+  
+  def searchMethod(self, name):
+    return self.methods.get(name)
 
   def equalsType(self, __class__):
     # Para clases, solo se compara si son exactamente iguales
@@ -276,13 +308,65 @@ class ClassType(DataType):
     return funcDef
     
   def __repr__(self) -> str:
-    return f"ClassType(name={self.name}, parent={self.parent}, constructor={self.constructor})"
+    return f"ClassType(name={self.name}, parent={self.parent}, constructor={self.constructor}, properties={self.properties}, methods={self.methods})"
 
+class ClassSelfReferenceType(DataType):
+  def __init__(self, classType):
+    self.classType = classType
+
+  def getType(self):
+    return self
+  
+  def equalsType(self, __class__):
+    return isinstance(self, __class__)
+  
+  def strictEqualsType(self, __class__):
+    return isinstance(self, __class__)
+  
+  def __repr__(self) -> str:
+    return f"ClassSelfReferenceType(classType={self.classType})"
+  
 class InstanceType(DataType):
   def __init__(self, classType):
     self.classType = classType
     self.name = classType.name
+    
+    # En un inicio, realiza una copia de todas las propiedades y métodos de la clase
+    # luego, guarda propiedades y métodos que se agregan posterior a instanciar la clase
+    # No es para guardar tipos, solo para verificar que en algún momento se agregó la prop o método
+    self.localProperties = classType.properties.copy()
+    self.localMethods = dict() # Diccionario que guarda function overloads
+    
+    self.copyClassMethods()
+    
 
+  def copyClassMethods(self):
+    "Copia las propiedades y métodos definidos inicialmente en la clase"
+    for name, functionOverload in self.classType.methods.items():
+      self.localMethods[name] = functionOverload.copy()
+    
+  def addProperty(self, name):
+    """
+    Se guarda el registro de que se creo una propiedad con el nombre indicado.
+    """
+    if name not in self.localProperties:
+      self.localProperties.append(name)
+    
+  def addMethod(self, name, functionObj):
+    """
+    Se guarda el registro de que se creo un método con el nombre indicado y parametros.
+    """
+    if name not in self.localMethods:
+      self.localMethods[name] = FunctionOverload(functionObj)
+    else:
+      self.localMethods[name].addOverload(functionObj)
+      
+  def searchProperty(self, name):
+    return self.localProperties.get(name)
+  
+  def searchMethod(self, name):
+    return self.localMethods.get(name)
+  
   def getType(self):
     return self
   
@@ -293,7 +377,7 @@ class InstanceType(DataType):
     return isinstance(self, __class__)
   
   def __repr__(self) -> str:
-    return f"InstanceType(classType={self.classType})"
+    return f"InstanceType(classType={self.classType}, localProperties={self.localProperties}, localMethods={self.localMethods})"
   
 class ObjectType:
   """
@@ -313,7 +397,15 @@ class ObjectType:
     self.value = None
 
   def getType(self):
-    return self.type
+    """
+    Devuelve el tipo guardado en la variable.
+    Si hay otra variable, itera hasta obtener el tipo final.
+    """
+    type = self.type
+    while isinstance(type, ObjectType):
+      type = type.getType()
+    
+    return type
 
   def equalsType(self, __class__):
     return __class__ == AnyType or isinstance(self.type, __class__)

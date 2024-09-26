@@ -1,7 +1,7 @@
 from antlr4 import *
 from antlr.CompiscriptListener import CompiscriptListener
 from antlr.CompiscriptParser import CompiscriptParser
-from SymbolTable import SymbolTable, FunctionType, ScopeType, AnyType, NumberType, StringType, BoolType, NilType, UnionType, ArrayType, InstanceType, TypesNames, FunctionOverload
+from SymbolTable import SymbolTable, FunctionType, ScopeType, AnyType, NumberType, StringType, BoolType, NilType, UnionType, ArrayType, InstanceType, TypesNames, FunctionOverload, ClassSelfReferenceType
 from Errors import SemanticError, CompilerError
 from ParamsTree import ParamsTree
 from IntermediateCodeGenerator import IntermediateCodeGenerator
@@ -470,19 +470,24 @@ class SemanticChecker(CompiscriptListener):
       if ctx.assignment() == None:
         # No es una asignación
         return
+      
+      assignmentValueType = ctx.assignment().type.getType() # valor a asignar (su tipo)
+      identifier = ctx.IDENTIFIER().getText() # identificador del atributo o variable
 
       if ctx.call() != None:
         # Es una asignación a un atributo de clase
 
-        receiverType = ctx.call().type # receiver = parte izq de: receiver.method_or_property()
+        # receiver = parte izq de: receiver.method_or_property()
+        # Si receiver fuera una variable, se obtendría el tipo de la variable
+        receiverType = ctx.call().type.getType() 
 
         if receiverType.equalsType(CompilerError):
           # Si receiver es un error, solo ignorar
           ctx.type = receiverType
           return
         
-        # Validar que el receiver sea un objeto de una clase
-        if not receiverType.equalsType(InstanceType):
+        # Validar que el receiver sea un objeto de una clase o una self-reference "this"
+        if not receiverType.equalsType(InstanceType) and not receiverType.equalsType(ClassSelfReferenceType):
           # error semántico
           line = ctx.start.line
           column = ctx.start.column
@@ -491,12 +496,38 @@ class SemanticChecker(CompiscriptListener):
           self.addSemanticError(error)
           return
 
-        # No se asigna un tipo al atributo, siempre es any
+        # Se guarda el atributo aunque siempre es any
+        
+        if receiverType.strictEqualsType(InstanceType):
+          # Si es una instancia, se agrega el atributo al objeto
+          
+          if assignmentValueType.strictEqualsType(FunctionType):
+            # Si el valor a asignar es una función, se agrega como método
+            receiverType.addMethod(identifier, assignmentValueType)
+          else:
+            # Si es cualquier otro tipo, se agrega como propiedad
+            receiverType.addProperty(identifier)
+          
+        else:
+          # Si es una referencia a la clase, se guarda en la definición de la clase
+          classRef = receiverType.classType
+          if assignmentValueType.strictEqualsType(FunctionType):
+            # Si el valor a asignar es una función, se agrega como método
+            classRef.addMethod(identifier, assignmentValueType)
+          else:
+            # Si es cualquier otro tipo, se agrega como propiedad
+            classRef.addProperty(identifier)
+          
         
       
       else:
         # Es una asignación a variable ya declarada
 
+
+        assignmentValueType = ctx.assignment().type
+        identifier = ctx.IDENTIFIER().getText() # identificador del atributo o variable
+        
+        
         assignmentValueType = ctx.assignment().type
         identifier = ctx.IDENTIFIER().getText() # identificador del atributo o variable
         
@@ -906,8 +937,7 @@ class SemanticChecker(CompiscriptListener):
       primary_name = None
       node_type = None
 
-    
-      for child in ctx.getChildren():     
+      for index, child in enumerate(ctx.getChildren()):     
         
         if isinstance(child, CompiscriptParser.PrimaryContext):
           # Obtener el tipo del nodo primario (identificador)
@@ -972,13 +1002,30 @@ class SemanticChecker(CompiscriptListener):
               node_type = error
               break
             
-            if not node_type.equalsType(InstanceType):
+            # Validar que el tipo sea un objeto o una referencia "this"
+            if not node_type.equalsType(InstanceType) and not node_type.equalsType(ClassSelfReferenceType):
               # error semántico
               error = SemanticError(f"El identificador '{primary_name}' no es un objeto.", line, column)
               self.addSemanticError(error)
               node_type = error
               break
-
+            
+            # Verificar si es un acceso a un atributo (no es una llamada a método)
+            isProp = False
+            propId = ctx.getChild(index + 1)
+            parenthesis = ctx.getChild(index + 2)
+            
+            isProp = propId != None and (parenthesis == None or parenthesis.getText() != "(")
+            
+            if isProp and node_type.strictEqualsType(ClassSelfReferenceType):
+          
+              # Guardar registro que se accedió a esa prop en la clase (this.algo)
+              classDef = node_type.classType
+              classDef.addProperty(propId.getText())
+              
+            elif isProp and node_type.strictEqualsType(InstanceType):
+              # Guardar registro en el objeto (objeto.algo)
+              node_type.addProperty(propId.getText())
           
             # Obtener el atributo de la clase (Siempre es any)
             node_type = AnyType()
@@ -1047,8 +1094,8 @@ class SemanticChecker(CompiscriptListener):
             if self.symbolTable.currentScope.getParentMethod() != None:
               # Obtener la clase a la que pertenece el método y crear un tipo instancia
               classDef = self.symbolTable.currentScope.getParentClass()
-              instanceDef = InstanceType(classDef)
-              ctx.type = instanceDef
+              selfReferenceDef = ClassSelfReferenceType(classDef)
+              ctx.type = selfReferenceDef
               
             else:
               # error semántico
@@ -1132,30 +1179,41 @@ class SemanticChecker(CompiscriptListener):
       # Si no se obtuvo el nombre de la función, se agrega el scrope pero con un error
       if functionName == None:
         functionName = CompilerError("No se ha definido el nombre de la función")
-
-      # Si el scope actual es una clase, verificar si la función es un constructor
-      if functionName == "init" and self.symbolTable.currentScope.isClassScope():
-        classDef = self.symbolTable.currentScope.reference
         
-        if classDef.constructor == None:
-          # Agregar constructor a la clase
-          constructorFunctionDef = classDef.addConstructor()
-          nodeParams.add("reference", constructorFunctionDef) # Guardar referencia al constructor (para hijos)
+      functionObj = FunctionType(functionName)
 
-          # Indica que el siguiente bloque es el cuerpo de un constructor
-          nodeParams.add("blockType", ScopeType.CONSTRUCTOR)
-          return
+
+      # Si el scope actual es una clase
+      isClassScope = self.symbolTable.currentScope.isClassScope()
+      classDef = self.symbolTable.currentScope.reference
+      
+      if isClassScope:
+        #  verificar si la función es un constructor
+        if functionName == "init" and isClassScope:
+          
+          if classDef.constructor == None:
+            # Agregar constructor a la clase
+            constructorFunctionDef = classDef.addConstructor()
+            nodeParams.add("reference", constructorFunctionDef) # Guardar referencia al constructor (para hijos)
+          
+            self.symbolTable.currentScope.addFunction(constructorFunctionDef)
+            
+
+            # Indica que el siguiente bloque es el cuerpo de un constructor
+            nodeParams.add("blockType", ScopeType.CONSTRUCTOR)
+            return
+          
+          else:
+            # error semántico
+            error = SemanticError("La clase ya tiene un constructor definido.", ctx.start.line, ctx.start.column)
+            self.addSemanticError(error)
+            ctx.type = error
         
         else:
-          # error semántico
-          error = SemanticError("La clase ya tiene un constructor definido.", ctx.start.line, ctx.start.column)
-          self.addSemanticError(error)
-          ctx.type = error
-          
-
+          # Si no es un constructor, agregar como un método
+          classDef.addMethod(functionName, functionObj)
       
       # No es un constructor (o hay error al agregar constructor), agregar función normal
-      functionObj = FunctionType(functionName)
       
       #verificar si el nombre de la función ya ha sido declarado (solo en el mismo scope)
       elementFound = self.symbolTable.currentScope.searchElement(functionName, searchInParentScopes=False, searchInParentClasses=False)
