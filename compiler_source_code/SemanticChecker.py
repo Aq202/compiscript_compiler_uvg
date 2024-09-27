@@ -1276,9 +1276,17 @@ class SemanticChecker(CompiscriptListener):
       for child in ctx.children:
         if isinstance(child, tree.Tree.TerminalNodeImpl): # type: ignore
           if child.symbol.type == CompiscriptParser.IDENTIFIER:
-            # Los parametros de la función pueden repetirse, solo se tomará el último en cuenta
+            
             parameterName = child.getText()
-            functionDef.addParam(parameterName)
+            
+            if parameterName in functionDef.params:
+              # Error semántico, el parámetro ya ha sido definido
+              line = child.symbol.line
+              column = child.symbol.column
+              error = SemanticError(f"El parámetro '{parameterName}' ya ha sido definido.", line, column)
+              self.addSemanticError(error)
+            else:             
+              functionDef.addParam(parameterName)
 
 
     def exitParameters(self, ctx: CompiscriptParser.ParametersContext):
