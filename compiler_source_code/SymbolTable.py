@@ -33,7 +33,8 @@ class Scope:
 
     # Saves reference to class or function definition
     self.reference = None
-
+    
+    self.offset = 0 # Por defecto, el offset inicial es cero
 
   def addFunction(self, functionObj):
     """
@@ -78,11 +79,11 @@ class Scope:
   def addObject(self, name, type):
     object = ObjectType(name, type)
     self.elements[name] = object
+    return object
     
-  def addTemporary(self, name, value):
+  def addTemporary(self, name):
     temp = ObjectType(name, AnyType())
     self.temporaries[name] = temp
-    temp.setValue(value)
     return temp
 
   def modifyInheritedObjectType(self, originalObject, newType):
@@ -346,6 +347,9 @@ class Scope:
       
       scope = scope.parent
     return False
+  
+  def setOffset(self, offset):
+    self.offset = offset
 
   def getInheritedObjectsList(self):
     return list(self.objectInheritances.values())

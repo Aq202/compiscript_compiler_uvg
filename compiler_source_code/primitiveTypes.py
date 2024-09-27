@@ -5,7 +5,6 @@ class NilType(DataType):
 
   def __init__(self):
     self.name = TypesNames.NIL.value
-    self.size = 0
 
   def getType(self):
     return self
@@ -46,15 +45,14 @@ class AnyType(DataType):
     
 class PrimitiveType(DataType):
 
-  def __init__(self, name, size):
+  def __init__(self, name):
     self.name = name
-    self.size = size
 
   def getType(self):
     return self
 
   def __repr__(self) -> str:
-    return f"PrimitiveType(name={self.name}, size={self.size})"
+    return f"PrimitiveType({self.name})"
   
   def equalsType(self, __class__):
     return __class__ == AnyType or isinstance(self, __class__)
@@ -64,7 +62,7 @@ class PrimitiveType(DataType):
 
 class NumberType(PrimitiveType):
   def __init__(self):
-    super().__init__(TypesNames.NUMBER.value, 1)
+    super().__init__(TypesNames.NUMBER.value)
 
   def __eq__(self, other):
     # Sobreescribir __eq__ para que todos los objetos de NumberType sean iguales
@@ -72,7 +70,7 @@ class NumberType(PrimitiveType):
   
 class StringType(PrimitiveType):
   def __init__(self):
-    super().__init__(TypesNames.STRING.value, 1)
+    super().__init__(TypesNames.STRING.value)
 
   def __eq__(self, other):
     # Sobreescribir __eq__ para que todos los objetos de StringType sean iguales
@@ -80,7 +78,7 @@ class StringType(PrimitiveType):
 
 class BoolType(PrimitiveType):
   def __init__(self):
-    super().__init__(TypesNames.BOOL.value, 1)
+    super().__init__(TypesNames.BOOL.value)
 
   def __eq__(self, other):
     # Sobreescribir __eq__ para que todos los objetos de BoolType sean iguales

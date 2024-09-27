@@ -10,13 +10,13 @@ from ParamsTree import ParamsTree
 from IntermediateCodeGenerator import IntermediateCodeGenerator
 class SemanticChecker(CompiscriptListener):
     
-    def __init__(self) -> None:
+    def __init__(self, preventCodeGeneration=False) -> None:
       super().__init__()
 
       self.symbolTable = SymbolTable()
       self.errors = []
       self.params = ParamsTree()
-      self.intermediateCodeGenerator = IntermediateCodeGenerator(self.symbolTable, self.errors)
+      self.intermediateCodeGenerator = IntermediateCodeGenerator(self.symbolTable, self.errors, stopGeneration=preventCodeGeneration)
 
     def addSemanticError(self, error):
       self.errors.append(error)
@@ -30,6 +30,8 @@ class SemanticChecker(CompiscriptListener):
     def exitProgram(self, ctx: CompiscriptParser.ProgramContext):
       super().exitProgram(ctx)
       print(self.symbolTable.str())
+      
+      return self.intermediateCodeGenerator.exitProgram(ctx)
 
 
     def enterDeclaration(self, ctx: CompiscriptParser.DeclarationContext):
@@ -73,6 +75,10 @@ class SemanticChecker(CompiscriptListener):
 
         # Crear scope para la clase
         classScope = self.symbolTable.createScope(ScopeType.CLASS)
+        
+        # Continuar con offset previo
+        prevOffset = self.symbolTable.currentScope.offset
+        classScope.setOffset(prevOffset)
         
         # Verificar si el nombre de la clase ya ha sido declarado (solo en el scope actual)
         if self.symbolTable.currentScope.searchElement(className, searchInParentScopes=False, searchInParentClasses=False):
@@ -140,7 +146,9 @@ class SemanticChecker(CompiscriptListener):
         varType = NilType()
 
       # Agregar variable al scope actual
-      self.symbolTable.currentScope.addObject(identifierName, varType)
+      objectDef = self.symbolTable.currentScope.addObject(identifierName, varType)
+      
+      return self.intermediateCodeGenerator.exitVarDecl(ctx, objectDef)
 
 
     def enterStatement(self, ctx: CompiscriptParser.StatementContext):
@@ -358,6 +366,12 @@ class SemanticChecker(CompiscriptListener):
       # Tipo de bloque, especificado en definición previa de fun, loop o if
       blockType = parentParams.get("blockType") # Obtenida de parametros proveidos de nodo superior
       blockScope = self.symbolTable.createScope(blockType)
+      
+      if blockType != ScopeType.FUNCTION:
+        # Si no es una función, mantener el offset previo
+        prevOffset =self.symbolTable.currentScope.offset
+        blockScope.setOffset(prevOffset)
+        
 
       # Intenta obtener la referencia a una función de parametros proveidos por nodo superior
       # Si es asi, se le asigna el scope del bloque a la definición de la función
@@ -450,6 +464,8 @@ class SemanticChecker(CompiscriptListener):
 
       # Asignar tipo de nodo hijo
       ctx.type = ctx.getChild(0).type
+      
+      return self.intermediateCodeGenerator.exitExpression(ctx)
 
 
     def enterAssignment(self, ctx: CompiscriptParser.AssignmentContext):
@@ -463,16 +479,16 @@ class SemanticChecker(CompiscriptListener):
 
       if ctx.children == None:
         # No se proporcionó un valor para la asignación
-        return
+        return self.intermediateCodeGenerator.exitAssignment(ctx)
 
       if len(ctx.children) == 1:
         # Solo es un nodo primario
         ctx.type = ctx.logic_or().type if ctx.logic_or() != None else None
-        return
+        return self.intermediateCodeGenerator.exitAssignment(ctx)
       
       if ctx.assignment() == None:
         # No es una asignación
-        return
+        return self.intermediateCodeGenerator.exitAssignment(ctx)
       
       assignmentValueType = ctx.assignment().type.getType() # valor a asignar (su tipo)
       identifier = ctx.IDENTIFIER().getText() # identificador del atributo o variable
@@ -555,6 +571,7 @@ class SemanticChecker(CompiscriptListener):
           paramRef.setType(assignmentValueType)
 
         ctx.type = assignmentValueType
+      return self.intermediateCodeGenerator.exitAssignment(ctx)
 
     def enterLogic_or(self, ctx: CompiscriptParser.Logic_orContext):
       return super().enterLogic_or(ctx)
@@ -567,7 +584,7 @@ class SemanticChecker(CompiscriptListener):
         # Si solo hay un hijo, obtener y asignar su tipo
         child1 = ctx.logic_and(0)
         ctx.type = child1.type if child1 else None
-        return
+        return self.intermediateCodeGenerator.exitLogic_or(ctx)
       
       ctx.type = BoolType() # Tipo bool por defecto
 
@@ -588,7 +605,7 @@ class SemanticChecker(CompiscriptListener):
             error = SemanticError("Los operandos en una sentencia 'or' debe ser de tipo bool.", line, column)
             self.addSemanticError(error)
             ctx.type = error
-
+      return self.intermediateCodeGenerator.exitLogic_or(ctx)
 
     def enterLogic_and(self, ctx: CompiscriptParser.Logic_andContext):
       return super().enterLogic_and(ctx)
@@ -601,7 +618,7 @@ class SemanticChecker(CompiscriptListener):
         # Si solo hay un hijo, obtener y asignar su tipo
         child1 = ctx.equality(0)
         ctx.type = child1.type if child1 else None
-        return
+        return self.intermediateCodeGenerator.exitLogic_and(ctx)
       
       ctx.type = BoolType() # Tipo bool por defecto
 
@@ -622,7 +639,8 @@ class SemanticChecker(CompiscriptListener):
             error = SemanticError("Los operandos en una sentencia 'and' debe ser de tipo bool.", line, column)
             self.addSemanticError(error)
             ctx.type = error
-
+            
+      return self.intermediateCodeGenerator.exitLogic_and(ctx)
 
     def enterEquality(self, ctx: CompiscriptParser.EqualityContext):
       return super().enterEquality(ctx)
@@ -635,7 +653,7 @@ class SemanticChecker(CompiscriptListener):
         # Si solo hay un hijo, obtener el tipo y asignar al nodo
         child1 = ctx.comparison(0)
         ctx.type = child1.type if child1 else None
-        return
+        return self.intermediateCodeGenerator.exitEquality(ctx)
 
       # Si hay más de un hijo, verificar que todos sean del mismo tipo
 
@@ -668,6 +686,7 @@ class SemanticChecker(CompiscriptListener):
           type = childType
 
       ctx.type = BoolType()
+      return self.intermediateCodeGenerator.exitEquality(ctx)
 
 
     def enterComparison(self, ctx: CompiscriptParser.ComparisonContext):
@@ -681,7 +700,7 @@ class SemanticChecker(CompiscriptListener):
         # Si solo hay un hijo, obtener el tipo y asignar al nodo
         child1 = ctx.term(0)
         ctx.type = child1.type if child1 else None
-        return
+        return self.intermediateCodeGenerator.exitComparison(ctx)
 
       # Si hay más de un hijo, verificar que todos sean del mismo tipo
 
@@ -714,7 +733,7 @@ class SemanticChecker(CompiscriptListener):
           type = childType
 
       ctx.type = BoolType()
-
+      return self.intermediateCodeGenerator.exitComparison(ctx)
 
     def enterTerm(self, ctx: CompiscriptParser.TermContext):
       return super().enterTerm(ctx)
@@ -727,7 +746,8 @@ class SemanticChecker(CompiscriptListener):
       if len(ctx.children) <= 1:
         child1 = ctx.factor(0)
         ctx.type = child1.type if child1 else None
-        return
+        return self.intermediateCodeGenerator.exitTerm(ctx)
+
 
       # Si hay más de un factor, verificar tipos
       
@@ -785,6 +805,7 @@ class SemanticChecker(CompiscriptListener):
         else:
           ctx.type = NumberType()
 
+      return self.intermediateCodeGenerator.exitTerm(ctx)
 
     def enterFactor(self, ctx: CompiscriptParser.FactorContext):
       return super().enterFactor(ctx)
@@ -797,7 +818,7 @@ class SemanticChecker(CompiscriptListener):
       if len(ctx.children) <= 1:
         child1 = ctx.unary(0)
         ctx.type = child1.type if child1 else None
-        return
+        return self.intermediateCodeGenerator.exitFactor(ctx)
 
       # Si hay más de un factor, verificar que todos sean numéricos
       
@@ -819,6 +840,8 @@ class SemanticChecker(CompiscriptListener):
             error = SemanticError("El factor debe ser de tipo numérico.", line, column)
             self.addSemanticError(error)
             ctx.type = error
+            
+      return self.intermediateCodeGenerator.exitFactor(ctx)
 
 
     def enterArray(self, ctx: CompiscriptParser.ArrayContext):
@@ -892,7 +915,7 @@ class SemanticChecker(CompiscriptListener):
       if len(ctx.children) <= 1:
         child1 = ctx.call()
         ctx.type = child1.type if child1 else None
-        return
+        return self.intermediateCodeGenerator.exitUnary(ctx)
 
       operator = ctx.getChild(0).getText()
       childType = ctx.unary().type
@@ -900,7 +923,7 @@ class SemanticChecker(CompiscriptListener):
       if childType.equalsType(CompilerError):
         # Si el tipo del hijo es un error, asignar el error al nodo
         ctx.type = childType
-        return
+        return self.intermediateCodeGenerator.exitUnary(ctx)
       
       if operator == "-" and not childType.equalsType(NumberType):
         # error semántico. El operador unario '-' solo puede ser usado con números
@@ -921,6 +944,8 @@ class SemanticChecker(CompiscriptListener):
         return
       
       ctx.type = childType # Asignar el tipo del hijo al nodo
+      
+      return self.intermediateCodeGenerator.exitUnary(ctx)
 
     def enterCall(self, ctx: CompiscriptParser.CallContext):
       return super().enterCall(ctx)
@@ -1053,6 +1078,8 @@ class SemanticChecker(CompiscriptListener):
 
       # asignar el tipo del nodo
       ctx.type = node_type
+      
+      return self.intermediateCodeGenerator.exitCall(ctx)
 
 
     def enterPrimary(self, ctx: CompiscriptParser.PrimaryContext):

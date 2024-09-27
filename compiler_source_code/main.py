@@ -45,7 +45,7 @@ def main():
         print("%s%s" % (pre, node.name))
 
     # Realizar análisis semantico
-    semantic_checker = SemanticChecker()
+    semantic_checker = SemanticChecker(preventCodeGeneration=len(lexerErrorListener.errors) + len(parserErrorListener.errors) > 0)
     walker = ParseTreeWalker()
     walker.walk(semantic_checker, tree)
 

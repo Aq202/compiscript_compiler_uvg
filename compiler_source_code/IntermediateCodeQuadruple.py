@@ -7,13 +7,13 @@ class QuadrupleRow:
 
   def __str__(self):
     if self.result and self.operator and self.arg1 and self.arg2:
-      return f"{self.result.name} = {self.arg1} {self.operator} {self.arg2}"
+      return f"{self.result} = {self.arg1} {self.operator} {self.arg2}"
     
     if self. result and self.operator and self.arg1:
-      return f"{self.result.name} = {self.operator} {self.arg1}"
+      return f"{self.result} = {self.operator} {self.arg1}"
     
     if self.result and self.arg1:
-      return f"{self.result.name} = {self.arg1}"
+      return f"{self.result} = {self.arg1}"
     
     if self.operator and self.arg1 and self.arg2:
       return f"{self.arg1} {self.operator} {self.arg2}"
