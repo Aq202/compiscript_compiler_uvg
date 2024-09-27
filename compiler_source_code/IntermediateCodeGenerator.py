@@ -1,6 +1,7 @@
 from antlr.CompiscriptParser import CompiscriptParser
 import uuid
-from SymbolTable import AnyType, NumberType, StringType, BoolType, NilType, ObjectType, FunctionType, ClassType
+from compoundTypes import ObjectType, FunctionType, ClassType
+from primitiveTypes import NumberType, StringType, NilType
 from IntermediateCodeQuadruple import IntermediateCodeQuadruple
 from IntermediateCodeTokens import NIL
 class IntermediateCodeGenerator:

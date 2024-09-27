@@ -1,7 +1,10 @@
 from antlr4 import *
 from antlr.CompiscriptListener import CompiscriptListener
 from antlr.CompiscriptParser import CompiscriptParser
-from SymbolTable import SymbolTable, FunctionType, ScopeType, AnyType, NumberType, StringType, BoolType, NilType, UnionType, ArrayType, InstanceType, TypesNames, FunctionOverload, ClassSelfReferenceType
+from SymbolTable import SymbolTable, ScopeType
+from primitiveTypes import AnyType, NumberType, StringType, BoolType, NilType
+from compoundTypes import UnionType, InstanceType, ClassSelfReferenceType, FunctionType, FunctionOverload, ArrayType
+from DataType import TypesNames
 from Errors import SemanticError, CompilerError
 from ParamsTree import ParamsTree
 from IntermediateCodeGenerator import IntermediateCodeGenerator
