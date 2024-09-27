@@ -1,6 +1,6 @@
 from antlr.CompiscriptParser import CompiscriptParser
 import uuid
-from compoundTypes import ObjectType, FunctionType, ClassType
+from compoundTypes import ObjectType, FunctionType, ClassType, InstanceType, ClassSelfReferenceType
 from primitiveTypes import NumberType, StringType, NilType
 from IntermediateCodeQuadruple import IntermediateCodeQuadruple
 from consts import MEM_ADDR_SIZE
@@ -173,19 +173,28 @@ class IntermediateCodeGenerator:
   def enterAssignment(self, ctx: CompiscriptParser.AssignmentContext):
     if not self.continueCodeGeneration(): return
 
-  def exitAssignment(self, ctx: CompiscriptParser.AssignmentContext):
+  def exitAssignment(self, ctx: CompiscriptParser.AssignmentContext, objectDef: ObjectType = None):
+    """
+    Si objectDef no es None, se trata de una asignación a una variable
+    """
     if not self.continueCodeGeneration(): return
-    
-    childNode = ctx.getChild(2)
-    if childNode:
-      print("nombre: ", childNode.getText())
-      print(childNode.addr)
-    
+      
     # Si es solo un nodo, pasar addr
     if len(ctx.children) == 1:
       childNode = ctx.getChild(0)
       ctx.addr = childNode.addr
       return
+    
+    valueAddr = ctx.assignment().addr
+    ctx.addr = valueAddr
+    
+    if objectDef is not None:
+      # Si es una asignación a una variable
+      self.intermediateCode.add(result=objectDef, arg1=valueAddr)
+    else:
+      # Si es una asignación a un atributo de clase
+      raise NotImplementedError("Asignación a atributo de clase en CI no implementada")
+
 
   def enterLogic_or(self, ctx: CompiscriptParser.Logic_orContext):
     if not self.continueCodeGeneration(): return

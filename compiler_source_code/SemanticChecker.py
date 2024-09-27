@@ -479,7 +479,7 @@ class SemanticChecker(CompiscriptListener):
 
       if ctx.children == None:
         # No se proporcionó un valor para la asignación
-        return self.intermediateCodeGenerator.exitAssignment(ctx)
+        return
 
       if len(ctx.children) == 1:
         # Solo es un nodo primario
@@ -488,7 +488,7 @@ class SemanticChecker(CompiscriptListener):
       
       if ctx.assignment() == None:
         # No es una asignación
-        return self.intermediateCodeGenerator.exitAssignment(ctx)
+        return
       
       assignmentValueType = ctx.assignment().type.getType() # valor a asignar (su tipo)
       identifier = ctx.IDENTIFIER().getText() # identificador del atributo o variable
@@ -538,20 +538,22 @@ class SemanticChecker(CompiscriptListener):
             classRef.addProperty(identifier)
           
         
+        ctx.type = AnyType()
+        return self.intermediateCodeGenerator.exitAssignment(ctx)
       
       else:
         # Es una asignación a variable ya declarada
 
         # Obtener primero objeto solo en el scope actual
-        paramRef = self.symbolTable.currentScope.getObject(identifier, searchInParentScopes=False)
-        isLocal = paramRef != None
+        variableRef = self.symbolTable.currentScope.getObject(identifier, searchInParentScopes=False)
+        isLocal = variableRef != None
 
         if not isLocal:
           # Buscar en scopes padres
-          paramRef = self.symbolTable.currentScope.getObject(identifier, searchInParentScopes=True)
+          variableRef = self.symbolTable.currentScope.getObject(identifier, searchInParentScopes=True)
 
         # Verificar si el identificador existe en el scope actual
-        if paramRef == None:
+        if variableRef == None:
           # error semántico
           line = ctx.start.line
           column = ctx.start.column
@@ -563,15 +565,15 @@ class SemanticChecker(CompiscriptListener):
         # Actualizar el tipo de la variable
         if not isLocal:
           # Si no es local, se crea (o modifica) una copia local del objeto heredado
-          self.symbolTable.currentScope.modifyInheritedObjectType(paramRef, assignmentValueType)
+          self.symbolTable.currentScope.modifyInheritedObjectType(variableRef, assignmentValueType)
           
         else:
           # Si es local, se modifica el objeto local
 
-          paramRef.setType(assignmentValueType)
+          variableRef.setType(assignmentValueType)
 
         ctx.type = assignmentValueType
-      return self.intermediateCodeGenerator.exitAssignment(ctx)
+      return self.intermediateCodeGenerator.exitAssignment(ctx, objectDef=variableRef)
 
     def enterLogic_or(self, ctx: CompiscriptParser.Logic_orContext):
       return super().enterLogic_or(ctx)
