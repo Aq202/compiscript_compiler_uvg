@@ -261,7 +261,7 @@ class SemanticChecker(CompiscriptListener):
       condition = ctx.expression()
       if condition != None: # Si es none, es un error léxico o sintactico, ignorar
         
-        if not condition.type.equalsType((BoolType, CompilerError)):
+        if condition.type != None and not condition.type.equalsType((BoolType, CompilerError)):
           # error semántico, la condición no es de tipo booleano o any
           line = condition.start.line
           column = condition.start.column
@@ -346,7 +346,7 @@ class SemanticChecker(CompiscriptListener):
       condition = ctx.expression()
       if condition != None: # Si es none, es un error léxico o sintactico, ignorar
         
-        if not condition.type.equalsType((BoolType, CompilerError)):
+        if condition.type != None and not condition.type.equalsType((BoolType, CompilerError)):
           # error semántico, la condición no es de tipo booleano o any
           line = condition.start.line
           column = condition.start.column
