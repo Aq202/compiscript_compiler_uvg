@@ -5,6 +5,7 @@ from primitiveTypes import NumberType, StringType, NilType
 from IntermediateCodeQuadruple import IntermediateCodeQuadruple
 from consts import MEM_ADDR_SIZE
 from Value import Value
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN
 
 
 class IntermediateCodeGenerator:
@@ -143,6 +144,20 @@ class IntermediateCodeGenerator:
 
   def exitReturnStmt(self, ctx: CompiscriptParser.ReturnStmtContext):
     if not self.continueCodeGeneration(): return
+    
+    returnAddr = None
+    expression = ctx.expression()
+
+    if expression == None:
+      # No tiene valor de retorno, nil por defecto
+      temp = self.newTemp()
+      self.intermediateCode.add(result=temp, arg1=Value(None, NilType()))
+      returnAddr = temp
+    
+    else:
+      returnAddr = expression.addr
+      
+    self.intermediateCode.add(operator=RETURN, arg1=returnAddr)
 
   def enterWhileStmt(self, ctx: CompiscriptParser.WhileStmtContext):
     if not self.continueCodeGeneration(): return
@@ -150,8 +165,25 @@ class IntermediateCodeGenerator:
   def exitWhileStmt(self, ctx: CompiscriptParser.WhileStmtContext):
     if not self.continueCodeGeneration(): return
 
-  def enterBlock(self, ctx: CompiscriptParser.BlockContext):
+  def enterBlock(self, ctx: CompiscriptParser.BlockContext, parameters:list[ObjectType]=None):
+    """
+    Si parameters no es None, se trata de una función y se realiza la carga de los parametros.
+    """
     if not self.continueCodeGeneration(): return
+    
+    scope = self.symbolTable.currentScope
+    # Correr offset para siguiente variable
+    if parameters is not None:
+      for i in range(len(parameters)):
+        param = parameters[i]
+        
+        # Asignar un offset a la variable local que almacena params
+        param.assignOffset(scope.offset, MEM_ADDR_SIZE)
+        scope.setOffset(scope.offset + MEM_ADDR_SIZE)
+        
+        # Guardar código intermedio de asignación de parámetros
+        self.intermediateCode.add(result=param, operator=GET_ARG, arg1=str(i))
+    
 
   def exitBlock(self, ctx: CompiscriptParser.BlockContext):
     if not self.continueCodeGeneration(): return
@@ -335,14 +367,18 @@ class IntermediateCodeGenerator:
     else:
       pass
     
-  def enterFunction(self, ctx: CompiscriptParser.FunctionContext):
+  def enterFunction(self, ctx: CompiscriptParser.FunctionContext, functionDef: FunctionType):
     if not self.continueCodeGeneration(): return
+    
+    self.intermediateCode.add(operator=FUNCTION, arg1=functionDef)
 
   def exitFunction(self, ctx: CompiscriptParser.FunctionContext):
     if not self.continueCodeGeneration(): return
 
-  def enterParameters(self, ctx: CompiscriptParser.ParametersContext):
+  def enterParameters(self, ctx: CompiscriptParser.ParametersContext, functionDef: FunctionType):
     if not self.continueCodeGeneration(): return
+    
+    # Asignación de parámetros se realiza en enterBlock
 
   def exitParameters(self, ctx: CompiscriptParser.ParametersContext):
     if not self.continueCodeGeneration(): return

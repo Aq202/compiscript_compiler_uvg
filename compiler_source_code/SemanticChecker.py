@@ -308,7 +308,7 @@ class SemanticChecker(CompiscriptListener):
 
       if expression == None:
         functionDef.setReturnType(NilType())
-        return
+        return self.intermediateCodeGenerator.exitReturnStmt(ctx)
       
       # Verificar si la ubicación de ejecución es ambigua (el return podría o no ejecutarse)
       # Busca hasta encontrar el scope de la función que contiene la sentencia 'return'
@@ -326,6 +326,7 @@ class SemanticChecker(CompiscriptListener):
           unionType = UnionType(functionDef.returnType, expression.type)
           functionDef.setReturnType(unionType)
 
+      return self.intermediateCodeGenerator.exitReturnStmt(ctx)
 
     def enterWhileStmt(self, ctx: CompiscriptParser.WhileStmtContext):
       super().enterWhileStmt(ctx)
@@ -376,18 +377,24 @@ class SemanticChecker(CompiscriptListener):
       # Intenta obtener la referencia a una función de parametros proveidos por nodo superior
       # Si es asi, se le asigna el scope del bloque a la definición de la función
       functionDef = parentParams.get("reference")      
-
+      paramObjects = []
       if functionDef != None and functionDef.bodyScope == None:
         
         # Agregar params al scope de la función
         for param in functionDef.params:
-          blockScope.addObject(param, AnyType())
+          paramObj = blockScope.addObject(param, AnyType())
+          paramObjects.append(paramObj)
 
         # Guardar el scope del bloque en la definición de la función
         functionDef.setBodyScope(blockScope)
+        
+        
 
       # Cambiar al scope del bloque
       self.symbolTable.setScope(blockScope)
+      
+      params = paramObjects if functionDef != None else None
+      return self.intermediateCodeGenerator.enterBlock(ctx, parameters= params)
 
 
     def exitBlock(self, ctx: CompiscriptParser.BlockContext):
@@ -1254,6 +1261,8 @@ class SemanticChecker(CompiscriptListener):
 
       # Indica que el siguiente bloque es el cuerpo de la función
       nodeParams.add("blockType", ScopeType.FUNCTION)
+      
+      return self.intermediateCodeGenerator.enterFunction(ctx, functionObj)
 
 
     def exitFunction(self, ctx: CompiscriptParser.FunctionContext):
