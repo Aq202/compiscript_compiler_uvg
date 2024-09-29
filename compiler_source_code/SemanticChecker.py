@@ -1312,5 +1312,7 @@ class SemanticChecker(CompiscriptListener):
     
 
     def exitArguments(self, ctx: CompiscriptParser.ArgumentsContext):
-      return super().exitArguments(ctx)
-    
+      super().exitArguments(ctx)
+      
+      return self.intermediateCodeGenerator.exitArguments(ctx)
+      

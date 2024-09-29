@@ -1,14 +1,15 @@
 from antlr.CompiscriptParser import CompiscriptParser
 import uuid
-from compoundTypes import ObjectType, FunctionType, ClassType, InstanceType, ClassSelfReferenceType
+from compoundTypes import ObjectType, FunctionType, ClassType, InstanceType, ClassSelfReferenceType, FunctionOverload
 from primitiveTypes import NumberType, StringType, NilType
 from IntermediateCodeQuadruple import IntermediateCodeQuadruple
 from consts import MEM_ADDR_SIZE
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL
+from antlr4 import tree
 
 
-class IntermediateCodeGenerator:
+class IntermediateCodeGenerator():
 
   def __init__(self, symbolTable, semanticErrors = [], stopGeneration=False) -> None:
     self.symbolTable = symbolTable
@@ -338,7 +339,58 @@ class IntermediateCodeGenerator:
       ctx.addr = childNode.addr
       return
     
-    
+    nodeAddr = None
+
+    for index, child in enumerate(ctx.getChildren()):     
+      
+      if isinstance(child, CompiscriptParser.PrimaryContext):
+        # Obtener el addr del nodo primario (identificador)
+        primary_context = ctx.primary()
+        
+        nodeAddr = primary_context.addr
+
+      elif isinstance(child, tree.Tree.TerminalNode):
+
+        token = child.getSymbol()
+        lexeme = child.getText()
+        line = token.line
+        column = token.column 
+
+        if lexeme == "(":
+
+
+          if nodeAddr.strictEqualsType(FunctionType) or nodeAddr.strictEqualsType(FunctionOverload) :
+            
+            obtainedParams = 0 if ctx.arguments(0) == None else len(ctx.arguments(0).expression())
+            
+            functionDef = nodeAddr.getType()
+            
+            # Si la función es una sobrecarga, obtener la función que corresponde a los argumentos
+            if nodeAddr.strictEqualsType(FunctionOverload):
+              functionDef = nodeAddr.getFunctionByParams(obtainedParams)
+
+            # Añadir Ci de llamada a función
+            self.intermediateCode.add(operator=CALL, arg1=functionDef, arg2=obtainedParams, operatorFirst=True)
+            
+            # Crear un nuevo temporal para guardar el valor de retorno
+            temp = self.newTemp()
+            self.intermediateCode.add(result=temp, arg1=RETURN_VAL)
+            
+            # Asignar valor de retorno como addr
+            ctx.addr = temp
+
+        elif lexeme == ".":
+          
+          # Se está accediendo a un atributo de clase
+          raise NotImplementedError("exitCall: Acceso a atributo de clase en CI no implementado")
+
+        elif lexeme == "[":
+
+          # Se está accediendo a un elemento de un array
+          
+          raise NotImplementedError("exitCall: Acceso a elemento de array en CI no implementado")
+
+
 
   def enterPrimary(self, ctx: CompiscriptParser.PrimaryContext):
     if not self.continueCodeGeneration(): return
@@ -364,7 +416,7 @@ class IntermediateCodeGenerator:
         self.intermediateCode.add(result=temp, arg1=Value(None, NilType()))
         ctx.addr = temp
       
-      elif isinstance(nodeType, (ObjectType, FunctionType, ClassType)):
+      elif isinstance(nodeType, (ObjectType, FunctionType,FunctionOverload, ClassType)):
         ctx.addr = nodeType
         
       
@@ -392,3 +444,7 @@ class IntermediateCodeGenerator:
 
   def exitArguments(self, ctx: CompiscriptParser.ArgumentsContext):
     if not self.continueCodeGeneration(): return
+    
+    for expression in ctx.expression():
+      # Agregar CI de argumentos
+      self.intermediateCode.add(operator=PARAM, arg1=expression.addr)
