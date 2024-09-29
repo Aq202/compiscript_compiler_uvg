@@ -145,19 +145,17 @@ class IntermediateCodeGenerator:
   def exitReturnStmt(self, ctx: CompiscriptParser.ReturnStmtContext):
     if not self.continueCodeGeneration(): return
     
-    returnAddr = None
+    returnVal = None
     expression = ctx.expression()
 
     if expression == None:
       # No tiene valor de retorno, nil por defecto
-      temp = self.newTemp()
-      self.intermediateCode.add(result=temp, arg1=Value(None, NilType()))
-      returnAddr = temp
+      returnVal = Value(None, NilType())
     
     else:
-      returnAddr = expression.addr
+      returnVal = expression.addr
       
-    self.intermediateCode.add(operator=RETURN, arg1=returnAddr)
+    self.intermediateCode.add(operator=RETURN, arg1=returnVal)
 
   def enterWhileStmt(self, ctx: CompiscriptParser.WhileStmtContext):
     if not self.continueCodeGeneration(): return
@@ -185,8 +183,12 @@ class IntermediateCodeGenerator:
         self.intermediateCode.add(result=param, operator=GET_ARG, arg1=str(i))
     
 
-  def exitBlock(self, ctx: CompiscriptParser.BlockContext):
+  def exitBlock(self, ctx: CompiscriptParser.BlockContext, isFunctionBlock:bool):
     if not self.continueCodeGeneration(): return
+    
+    # Si se sale de una función, se genera un return nil por defecto
+    if isFunctionBlock:
+      self.intermediateCode.add(operator=RETURN, arg1=Value(None, NilType()))
 
   def enterFunAnon(self, ctx: CompiscriptParser.FunAnonContext):
     if not self.continueCodeGeneration(): return
@@ -335,6 +337,8 @@ class IntermediateCodeGenerator:
       childNode = ctx.getChild(0)
       ctx.addr = childNode.addr
       return
+    
+    
 
   def enterPrimary(self, ctx: CompiscriptParser.PrimaryContext):
     if not self.continueCodeGeneration(): return
