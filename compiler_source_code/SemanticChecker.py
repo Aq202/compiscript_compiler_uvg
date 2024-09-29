@@ -1007,7 +1007,7 @@ class SemanticChecker(CompiscriptListener):
 
               # Obtener el tipo de retorno de la función (solo si es exclusivamente una función)
               # Si es any, se mantiene el tipo any
-              node_type = functionDef.returnType
+              node_type = functionDef.returnType.getType()
 
               # Si es estrictamente una función, se verifica el número de params
   
