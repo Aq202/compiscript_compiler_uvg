@@ -285,7 +285,6 @@ class ObjectType:
     self.name = name
     self.type = type
     self.reference = reference
-    self.value = None
     self.offset = None
     self.size = None
 
@@ -312,18 +311,6 @@ class ObjectType:
   def setReference(self, reference):
     self.reference = reference
     
-  def setValue(self, value):
-    """
-    El valor de un objeto deberá ser un valor primitivo o una "variable" (ObjectType)
-    No debe contener clases ni funciones.
-    """
-    
-    # Validar que es un tipo primitivo o un ObjectType
-    validTypes = (int, float, bool, str, ObjectType)
-    if not isinstance(value, validTypes):
-      raise ValueError(f"El valor de un objeto debe ser un tipo primitivo o un ObjectType. Se recibió {type(value)}")
-    
-    self.value = value
     
   def assignOffset(self, offset, size):
     self.offset = offset
@@ -331,4 +318,13 @@ class ObjectType:
 
   def __repr__(self):
     reference = self.reference if self.reference != self else "ObjectType(SELF)"
-    return f"ObjectType(name={self.name}, offset={self.offset}, type={self.type}, reference={reference}, value={self.value})"
+    repr = [f"name={self.name}"]
+    if reference != None:
+      repr.append(f"reference={reference}")
+    if self.type != None and not self.type.strictEqualsType(AnyType):
+      repr.append(f"type={self.type}")
+    if self.offset != None:
+      repr.append(f"offset={self.offset}")
+    
+    
+    return f"ObjectType({', '.join(repr)})"

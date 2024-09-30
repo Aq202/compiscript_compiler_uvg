@@ -5,8 +5,9 @@ from primitiveTypes import NumberType, StringType, NilType
 from IntermediateCodeQuadruple import IntermediateCodeQuadruple
 from consts import MEM_ADDR_SIZE
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, PLUS, BASE_POINTER, MALLOC
 from antlr4 import tree
+from Offset import Offset
 
 
 class IntermediateCodeGenerator():
@@ -27,7 +28,8 @@ class IntermediateCodeGenerator():
     Crea un nuevo temporal y lo agrega a la tabla de simbolos
     value: debe ser un valor primitivo o un ObjectType
     """
-    tempName = f"t{self.tempCounter}-{uuid.uuid4()}"
+    #tempName = f"t{self.tempCounter}-{uuid.uuid4()}"
+    tempName = f"t{self.tempCounter}"
     self.tempCounter += 1
     temp = self.symbolTable.currentScope.addTemporary(tempName)
     
@@ -309,24 +311,26 @@ class IntermediateCodeGenerator():
   def exitArray(self, ctx: CompiscriptParser.ArrayContext):
     if not self.continueCodeGeneration(): return
     
-    # Si está vacío, asignar primera posición como nil
+    # Si está vacío, asignar como nil
     if len(ctx.expression()) == 0:
-      temp = self.newTemp()
-      self.intermediateCode.add(result=temp, arg1=Value(None, NilType()))
-      ctx.addr = temp
+      arrayAddr = self.newTemp()
+      self.intermediateCode.add(result=arrayAddr, arg1=Value(None, NilType()))
+      ctx.addr = arrayAddr
       return
     
     ctx.addr = None
     
-    for expression in ctx.expression():
-      # Agregar CI de asignación de elementos de array
-      temp = self.newTemp()
-      self.intermediateCode.add(result=temp, arg1=expression.addr)
-      
-      if ctx.addr is None:
-        # Devolver como dirección del array la primera posición
-        ctx.addr = temp
+    array_size = len(ctx.expression()) * MEM_ADDR_SIZE
+    
+    # Guardar array en memoria dinamica
+    arrayAddr = self.newTemp() # Temp guarda dirección de inicio de array
+    self.intermediateCode.add(result=arrayAddr, arg1=array_size, operator=MALLOC)
+    
+    for index, expression in enumerate(ctx.expression()):
+      arrayPosition = Offset(arrayAddr, index * MEM_ADDR_SIZE) # Dirección de memoria del elemento en el array
+      self.intermediateCode.add(result=arrayPosition, arg1=expression.addr)
 
+    ctx.addr = arrayAddr
   def enterInstantiation(self, ctx: CompiscriptParser.InstantiationContext):
     if not self.continueCodeGeneration(): return
 
@@ -391,11 +395,11 @@ class IntermediateCodeGenerator():
             self.intermediateCode.add(operator=CALL, arg1=functionDef, arg2=obtainedParams, operatorFirst=True)
             
             # Crear un nuevo temporal para guardar el valor de retorno
-            temp = self.newTemp()
-            self.intermediateCode.add(result=temp, arg1=RETURN_VAL)
+            offset = self.newTemp()
+            self.intermediateCode.add(result=offset, arg1=RETURN_VAL)
             
             # Asignar valor de retorno como addr
-            ctx.addr = temp
+            ctx.addr = offset
 
         elif lexeme == ".":
           
@@ -406,7 +410,20 @@ class IntermediateCodeGenerator():
 
           # Se está accediendo a un elemento de un array
           
-          raise NotImplementedError("exitCall: Acceso a elemento de array en CI no implementado")
+          arrayBase = nodeAddr
+          
+          indexToken = ctx.expression(0)
+          
+          # Calcular el desplazamiento: indice * tamaño de casilla
+          arrayShiftTemp = self.newTemp()
+          self.intermediateCode.add(result=arrayShiftTemp, arg1=indexToken.addr, arg2=MEM_ADDR_SIZE, operator=MULTIPLY)
+          
+          # Asignar array[arrayShift] a addr
+          arrayElement = Offset(arrayBase, arrayShiftTemp)
+                
+          ctx.addr = arrayElement
+          
+          
 
 
 
