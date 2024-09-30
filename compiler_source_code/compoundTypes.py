@@ -43,7 +43,7 @@ class ArrayType(DataType):
       self.name = TypesNames.ARRAY.value
 
     def getType(self):
-      self
+      return self
 
     def equalsType(self, __class__):
       return __class__ == AnyType or isinstance(self, __class__)
