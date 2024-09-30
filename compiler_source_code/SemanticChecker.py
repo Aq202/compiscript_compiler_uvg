@@ -865,6 +865,8 @@ class SemanticChecker(CompiscriptListener):
 
       # Crear tipo array de tipos any
       ctx.type = ArrayType()
+      
+      return self.intermediateCodeGenerator.exitArray(ctx)
 
 
     def enterInstantiation(self, ctx: CompiscriptParser.InstantiationContext):

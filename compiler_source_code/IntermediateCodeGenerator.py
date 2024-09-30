@@ -308,6 +308,24 @@ class IntermediateCodeGenerator():
 
   def exitArray(self, ctx: CompiscriptParser.ArrayContext):
     if not self.continueCodeGeneration(): return
+    
+    # Si está vacío, asignar primera posición como nil
+    if len(ctx.expression()) == 0:
+      temp = self.newTemp()
+      self.intermediateCode.add(result=temp, arg1=Value(None, NilType()))
+      ctx.addr = temp
+      return
+    
+    ctx.addr = None
+    
+    for expression in ctx.expression():
+      # Agregar CI de asignación de elementos de array
+      temp = self.newTemp()
+      self.intermediateCode.add(result=temp, arg1=expression.addr)
+      
+      if ctx.addr is None:
+        # Devolver como dirección del array la primera posición
+        ctx.addr = temp
 
   def enterInstantiation(self, ctx: CompiscriptParser.InstantiationContext):
     if not self.continueCodeGeneration(): return
@@ -402,8 +420,12 @@ class IntermediateCodeGenerator():
       # Un solo nodo hijo
       nodeType = ctx.type
       lexeme = ctx.getChild(0).getText()
+      
+      if not isinstance(ctx.getChild(0), tree.Tree.TerminalNode):
+        # Es un no terminal
+        ctx.addr = ctx.getChild(0).addr
 
-      if isinstance(nodeType,(NumberType, StringType)):
+      elif isinstance(nodeType,(NumberType, StringType)):
         
         # Crear un nuevo temporal con valor
         temp = self.newTemp()
