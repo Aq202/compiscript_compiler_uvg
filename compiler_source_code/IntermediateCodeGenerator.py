@@ -193,11 +193,18 @@ class IntermediateCodeGenerator():
     if isFunctionBlock:
       self.intermediateCode.add(operator=RETURN, arg1=Value(None, NilType()))
 
-  def enterFunAnon(self, ctx: CompiscriptParser.FunAnonContext):
+  def enterFunAnon(self, ctx: CompiscriptParser.FunAnonContext, functionDef: FunctionType):
     if not self.continueCodeGeneration(): return
+    
+    # Añadir CI de función anónima
+    self.intermediateCode.add(operator=FUNCTION, arg1=functionDef)
 
-  def exitFunAnon(self, ctx: CompiscriptParser.FunAnonContext):
+  def exitFunAnon(self, ctx: CompiscriptParser.FunAnonContext, functionDef: FunctionType):
     if not self.continueCodeGeneration(): return
+    
+    # Retornar dirección de función anónima
+    ctx.addr = functionDef
+    
 
   def enterExpression(self, ctx: CompiscriptParser.ExpressionContext):
     if not self.continueCodeGeneration(): return
@@ -379,27 +386,24 @@ class IntermediateCodeGenerator():
         column = token.column 
 
         if lexeme == "(":
+            
+          obtainedParams = 0 if ctx.arguments(0) == None else len(ctx.arguments(0).expression())
+          
+          functionDef = nodeAddr
+          
+          # Si la función es una sobrecarga, obtener la función que corresponde a los argumentos
+          if nodeAddr.strictEqualsType(FunctionOverload):
+            functionDef = nodeAddr.getFunctionByParams(obtainedParams)
 
-
-          if nodeAddr.strictEqualsType(FunctionType) or nodeAddr.strictEqualsType(FunctionOverload) :
-            
-            obtainedParams = 0 if ctx.arguments(0) == None else len(ctx.arguments(0).expression())
-            
-            functionDef = nodeAddr.getType()
-            
-            # Si la función es una sobrecarga, obtener la función que corresponde a los argumentos
-            if nodeAddr.strictEqualsType(FunctionOverload):
-              functionDef = nodeAddr.getFunctionByParams(obtainedParams)
-
-            # Añadir Ci de llamada a función
-            self.intermediateCode.add(operator=CALL, arg1=functionDef, arg2=obtainedParams, operatorFirst=True)
-            
-            # Crear un nuevo temporal para guardar el valor de retorno
-            offset = self.newTemp()
-            self.intermediateCode.add(result=offset, arg1=RETURN_VAL)
-            
-            # Asignar valor de retorno como addr
-            ctx.addr = offset
+          # Añadir Ci de llamada a función
+          self.intermediateCode.add(operator=CALL, arg1=functionDef, arg2=obtainedParams, operatorFirst=True)
+          
+          # Crear un nuevo temporal para guardar el valor de retorno
+          offset = self.newTemp()
+          self.intermediateCode.add(result=offset, arg1=RETURN_VAL)
+          
+          # Asignar valor de retorno como addr
+          ctx.addr = offset
 
         elif lexeme == ".":
           

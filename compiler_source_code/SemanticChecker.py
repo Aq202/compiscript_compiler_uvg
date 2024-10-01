@@ -453,6 +453,8 @@ class SemanticChecker(CompiscriptListener):
       # Pasar como parametro la función
       nodeParams.add("reference", functionDef)
       
+      return self.intermediateCodeGenerator.enterFunAnon(ctx, functionDef)
+      
 
 
     def exitFunAnon(self, ctx: CompiscriptParser.FunAnonContext):
@@ -463,6 +465,8 @@ class SemanticChecker(CompiscriptListener):
       # Retornar el tipo de la función (última creada) y eliminar de la tabla de símbolos
       functionDef = self.symbolTable.currentScope.popLastFunction()
       ctx.type = functionDef.getType()
+      
+      self.intermediateCodeGenerator.exitFunAnon(ctx, functionDef)
 
 
     def enterExpression(self, ctx: CompiscriptParser.ExpressionContext):
@@ -977,7 +981,7 @@ class SemanticChecker(CompiscriptListener):
           # Obtener el tipo del nodo primario (identificador)
           primary_context = ctx.primary()
 
-          node_type = primary_context.type
+          node_type = primary_context.type.getType()
           primary_name = child.getText()
 
         elif isinstance(child, tree.Tree.TerminalNode): # type: ignore
@@ -1001,7 +1005,7 @@ class SemanticChecker(CompiscriptListener):
               
               obtainedParams = 0 if ctx.arguments(0) == None else len(ctx.arguments(0).expression())
               
-              functionDef = node_type
+              functionDef = node_type.getType()
               
               # Si la función es una sobrecarga, obtener la función que corresponde a los argumentos
               if node_type.strictEqualsType(FunctionOverload):
