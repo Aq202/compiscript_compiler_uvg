@@ -296,6 +296,41 @@ class IntermediateCodeGenerator():
       childNode = ctx.getChild(0)
       ctx.addr = childNode.addr
       return
+    
+    # Operación lógica or
+    
+    code = None
+    operand1 = None
+    
+    trueLabel = self.newLabel()
+    endLabel = self.newLabel()
+    
+    for child in ctx.children:
+      if isinstance(child, CompiscriptParser.Logic_andContext):
+        
+        operand1 = child.addr
+        
+        conditionalCode = ConditionalInstruction(arg1=operand1, operator=EQUAL, arg2=trueValue, goToLabel=trueLabel)
+        if code == None:
+          code = conditionalCode
+        else:
+          code.concat(conditionalCode)
+          
+    temp = self.newTemp()
+    # Si ningún operando es true, asignar falseVal a temporal y saltar al final
+    code.concat(SingleInstruction(result=temp, arg1=falseValue))
+    code.concat(SingleInstruction(operator=GOTO, arg1=endLabel))
+    
+    # Etiqueta de true: asignar trueVal a temporal
+    code.concat(SingleInstruction(operator=LABEL, arg1=trueLabel))
+    code.concat(SingleInstruction(result=temp, arg1=trueValue))
+    
+    # Etiqueta de fin
+    code.concat(SingleInstruction(operator=LABEL, arg1=endLabel))
+    
+    # Guardar addr de resultado de operación and y concatenar código
+    ctx.addr = temp
+    ctx.code.concat(code)
 
   def enterLogic_and(self, ctx: CompiscriptParser.Logic_andContext):
     if not self.continueCodeGeneration(): return
