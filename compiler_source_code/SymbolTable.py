@@ -11,7 +11,8 @@ class ScopeType(Enum):
   CONSTRUCTOR = "constructor"
   FUNCTION = "function"
   CLASS = "class"
-  LOOP = "loop"
+  FOR_LOOP = "for_loop"
+  WHILE_LOOP = "while_loop"
   CONDITIONAL = "conditional"
   GLOBAL = "global"
 
@@ -234,7 +235,7 @@ class Scope:
     """
     Verifica si el scope corresponde a un loop
     """
-    return self.type == ScopeType.LOOP
+    return self.type == ScopeType.FOR_LOOP or self.type == ScopeType.WHILE_LOOP
 
   def getParentFunction(self, searchInParentScopes = True):
     """
@@ -342,7 +343,7 @@ class Scope:
         if elementStop.name in scope.objectInheritances and scope.objectInheritances[elementStop.name] == elementStop:
           return False
 
-      if scope.type in [ScopeType.FUNCTION, ScopeType.CONDITIONAL, ScopeType.LOOP, ScopeType.CONSTRUCTOR]:
+      if scope.type in [ScopeType.FUNCTION, ScopeType.CONDITIONAL, ScopeType.WHILE_LOOP, ScopeType.FOR_LOOP, ScopeType.CONSTRUCTOR]:
         return True
       
       scope = scope.parent

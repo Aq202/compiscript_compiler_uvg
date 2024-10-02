@@ -223,7 +223,17 @@ class SemanticChecker(CompiscriptListener):
       _, nodeParams = self.params.initNodeParams()
 
       # Indicar que el siguiente bloque es un loop en parametros
-      nodeParams.add("blockType", ScopeType.LOOP) 
+      nodeParams.add("blockType", ScopeType.FOR_LOOP) 
+      
+      # Añadir un scope para el for
+      # No se crea en block por las declaraciones de variables al definir for
+      scope = self.symbolTable.createScope(ScopeType.FOR_LOOP)
+      
+      # Mantener offset
+      prevOffset =self.symbolTable.currentScope.offset
+      scope.setOffset(prevOffset)
+      
+      self.symbolTable.setScope(scope)
 
 
     def exitForStmt(self, ctx: CompiscriptParser.ForStmtContext):
@@ -350,7 +360,7 @@ class SemanticChecker(CompiscriptListener):
       _, nodeParams = self.params.initNodeParams()
 
       # Indicar que el siguiente bloque es un loop en parametros
-      nodeParams.add("blockType", ScopeType.LOOP) 
+      nodeParams.add("blockType", ScopeType.WHILE_LOOP) 
 
 
     def exitWhileStmt(self, ctx: CompiscriptParser.WhileStmtContext):
@@ -383,6 +393,12 @@ class SemanticChecker(CompiscriptListener):
 
       # Tipo de bloque, especificado en definición previa de fun, loop o if
       blockType = parentParams.get("blockType") # Obtenida de parametros proveidos de nodo superior
+      
+      # Si es un for, ya se agregó y cambió el scope en enterForStmt
+      if blockType == ScopeType.FOR_LOOP:
+        return # No es necesario ejecutar intermediateCodeGenerator.enterBlock
+      
+      # Crear scope para el bloque
       blockScope = self.symbolTable.createScope(blockType)
       
       if blockType != ScopeType.FUNCTION:
