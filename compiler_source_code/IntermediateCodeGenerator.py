@@ -5,7 +5,7 @@ from primitiveTypes import NumberType, StringType, NilType, BoolType
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, GOTO, LABEL
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, GREATER, LESS, GOTO, LABEL
 from antlr4 import tree
 from Offset import Offset
 
@@ -407,12 +407,12 @@ class IntermediateCodeGenerator():
       
       firstOperandIndex = i * 2
       operand1 = ctx.getChild(firstOperandIndex).addr
-      operator = ctx.getChild(firstOperandIndex + 1).getText()
+      operatorLexeme = ctx.getChild(firstOperandIndex + 1).getText()
       operand2 = ctx.getChild(firstOperandIndex + 2).addr
       
       # Se escoge el operador opuesto, para no seguir evaluando 
       # Con uno que no sea igual (o diferente), la expresión completa es falsa
-      operator = EQUAL if operator != "==" else NOT_EQUAL
+      operator = EQUAL if operatorLexeme != "==" else NOT_EQUAL
       instruction = ConditionalInstruction(arg1=operand1, operator=operator, arg2=operand2, goToLabel=falseLabel)
       
       if code == None:
@@ -448,6 +448,58 @@ class IntermediateCodeGenerator():
       childNode = ctx.getChild(0)
       ctx.addr = childNode.addr
       return
+    
+    
+    # Comparación
+    
+    code = None
+    numOperations = (len(ctx.children) - 1) // 2
+    
+    falseLabel = self.newLabel()
+    endLabel = self.newLabel()
+    
+    for i in range(numOperations):
+      
+      firstOperandIndex = i * 2
+      operand1 = ctx.getChild(firstOperandIndex).addr
+      operator = ctx.getChild(firstOperandIndex + 1).getText()
+      operand2 = ctx.getChild(firstOperandIndex + 2).addr
+      
+      # Se escoge el operador opuesto, para no seguir evaluando 
+      # Con uno que no cumpla, la expresión completa es falsa
+      if operator == "<":
+        instruction = ConditionalInstruction(arg1=operand1, operator=GREATER, arg2=operand2, goToLabel=falseLabel)
+        instruction.concat(ConditionalInstruction(arg1=operand1, operator=EQUAL, arg2=operand2, goToLabel=falseLabel))
+      elif operator == ">":
+        instruction = ConditionalInstruction(arg1=operand1, operator=LESS, arg2=operand2, goToLabel=falseLabel)
+        instruction.concat(ConditionalInstruction(arg1=operand1, operator=EQUAL, arg2=operand2, goToLabel=falseLabel))
+      elif operator == "<=":
+        instruction = ConditionalInstruction(arg1=operand1, operator=GREATER, arg2=operand2, goToLabel=falseLabel)
+      elif operator == ">=":
+        instruction = ConditionalInstruction(arg1=operand1, operator=LESS, arg2=operand2, goToLabel=falseLabel)
+      else:
+        raise NotImplementedError("exitComparison: Operador no implementado)")
+      
+      if code == None:
+        code = instruction
+      else:
+        code.concat(instruction)
+    
+    temp = self.newTemp()
+    # Si ninguna comparación es falsa, asignar trueVal a temporal y saltar al final
+    code.concat(SingleInstruction(result=temp, arg1=trueValue))
+    code.concat(SingleInstruction(operator=GOTO, arg1=endLabel))
+    
+    # Etiqueta de falso: asignar falseVal a temporal
+    code.concat(SingleInstruction(operator=LABEL, arg1=falseLabel))
+    code.concat(SingleInstruction(result=temp, arg1=falseValue))
+    
+    # Etiqueta de fin
+    code.concat(SingleInstruction(operator=LABEL, arg1=endLabel))
+    
+    # Guardar addr de resultado de operación de comparación y concatenar código
+    ctx.addr = temp
+    ctx.code.concat(code)
 
   def enterTerm(self, ctx: CompiscriptParser.TermContext):
     if not self.continueCodeGeneration(): return
