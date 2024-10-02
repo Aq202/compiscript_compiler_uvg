@@ -1,15 +1,16 @@
 from antlr.CompiscriptParser import CompiscriptParser
 import uuid
 from compoundTypes import ObjectType, FunctionType, ClassType, InstanceType, ClassSelfReferenceType, FunctionOverload
-from primitiveTypes import NumberType, StringType, NilType
-from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction
+from primitiveTypes import NumberType, StringType, NilType, BoolType
+from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, PLUS, BASE_POINTER, MALLOC
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, GOTO, LABEL
 from antlr4 import tree
 from Offset import Offset
 
-
+trueValue = Value(1, BoolType())
+falseValue = Value(0, BoolType())
 class IntermediateCodeGenerator():
 
   def __init__(self, symbolTable, semanticErrors = [], stopGeneration=False) -> None:
@@ -44,7 +45,9 @@ class IntermediateCodeGenerator():
     """
     Crea un nuevo label
     """
-    return f"L{self.labelCounter}"
+    label = f"L{self.labelCounter}"
+    self.labelCounter += 1
+    return label
   
   def getChildrenCode(self, ctx):
     """
@@ -306,6 +309,44 @@ class IntermediateCodeGenerator():
       childNode = ctx.getChild(0)
       ctx.addr = childNode.addr
       return
+    
+    # Operación lógica and
+    
+    code = None
+    operand1 = None
+    
+    falseLabel = self.newLabel()
+    endLabel = self.newLabel()
+    
+    for child in ctx.children:
+      if isinstance(child, CompiscriptParser.EqualityContext):
+        
+        operand1 = child.addr
+        
+
+        conditionalCode = ConditionalInstruction(arg1=operand1, operator=EQUAL, arg2=falseValue, goToLabel=falseLabel)
+        if code == None:
+          code = conditionalCode
+        else:
+          code.concat(conditionalCode)
+          
+    temp = self.newTemp()
+    # Si ningún operando es false, asignar trueVal a temporal y saltar al final
+    code.concat(SingleInstruction(result=temp, arg1=trueValue))
+    code.concat(SingleInstruction(operator=GOTO, arg1=endLabel))
+    
+    # Etiqueta de falso: asignar falseVal a temporal
+    code.concat(SingleInstruction(operator=LABEL, arg1=falseLabel))
+    code.concat(SingleInstruction(result=temp, arg1=falseValue))
+    
+    # Etiqueta de fin
+    code.concat(SingleInstruction(operator=LABEL, arg1=endLabel))
+    
+    # Guardar addr de resultado de operación and y concatenar código
+    ctx.addr = temp
+    ctx.code.concat(code)
+    
+    
 
   def enterEquality(self, ctx: CompiscriptParser.EqualityContext):
     if not self.continueCodeGeneration(): return
@@ -514,6 +555,13 @@ class IntermediateCodeGenerator():
       elif isinstance(nodeType, NilType):
         temp = self.newTemp()
         ctx.code.concat(SingleInstruction(result=temp, arg1=Value(None, NilType())))
+        ctx.addr = temp
+        
+      elif isinstance(nodeType, BoolType):
+        temp = self.newTemp()
+        
+        val = trueValue if lexeme == "true" else falseValue
+        ctx.code.concat(SingleInstruction(result=temp, arg1=val))
         ctx.addr = temp
       
       elif isinstance(nodeType, (ObjectType, FunctionType,FunctionOverload, ClassType)):
