@@ -5,7 +5,7 @@ from primitiveTypes import NumberType, StringType, NilType, BoolType
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, GREATER, LESS, GOTO, LABEL
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, GREATER, LESS, GOTO, LABEL, MINUS, XOR
 from antlr4 import tree
 from Offset import Offset
 
@@ -576,7 +576,23 @@ class IntermediateCodeGenerator():
       childNode = ctx.getChild(0)
       ctx.addr = childNode.addr
       return
+    
+    operation = ctx.getChild(0).getText()
+    operand = ctx.getChild(1).addr
+    temp = self.newTemp()
+    
+    
+    if operation == "-":
+      # Operador unario negativo. 0 - X = -X
+      ctx.code.concat(SingleInstruction(result=temp, arg1=Value(0, NumberType()), operator=MINUS, arg2=operand))
 
+    else:
+      # Operador unario not
+      # 1 XOR 1 = 0, 0 XOR 1 = 1
+      ctx.code.concat(SingleInstruction(result=temp, arg1=operand, operator=XOR, arg2=Value(1, NumberType())))
+      
+    ctx.addr = temp
+    
   def enterCall(self, ctx: CompiscriptParser.CallContext):
     if not self.continueCodeGeneration(): return
 
