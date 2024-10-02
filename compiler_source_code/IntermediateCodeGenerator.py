@@ -5,7 +5,7 @@ from primitiveTypes import NumberType, StringType, NilType, BoolType
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, GREATER, LESS, GOTO, LABEL, MINUS, XOR
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, GREATER, LESS, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS
 from antlr4 import tree
 from Offset import Offset
 
@@ -565,6 +565,42 @@ class IntermediateCodeGenerator():
       childNode = ctx.getChild(0)
       ctx.addr = childNode.addr
       return
+    
+    # Son operaciones aritméticas
+    
+    code = None
+    numOperations = (len(ctx.children) - 1) // 2
+    
+    firstOperand = ctx.getChild(0).addr
+    
+    for i in range(numOperations):
+      
+      operatorLexeme = ctx.getChild(i * 2 + 1).getText()
+      secondOperand = ctx.getChild(i * 2 + 2).addr
+      
+      temp = self.newTemp()
+      
+      # Determinar token de operación
+      if operatorLexeme == "+":
+        operation = PLUS
+      elif operatorLexeme == "-":
+        operation = MINUS
+      else:
+        raise NotImplementedError("exitTerm: Operador no implementado")
+      
+      # Agregar instrucción de operación
+      instruction = SingleInstruction(result=temp, arg1=firstOperand, operator=operation, arg2=secondOperand)
+      if code == None:
+        code = instruction
+      else:
+        code.concat(instruction)
+        
+      # Actualizar primer operando con resultado de operación
+      firstOperand = temp
+      
+    # Guardar addr de resultado de operación y concatenar código
+    ctx.addr = firstOperand
+    ctx.code.concat(code)  
 
   def enterFactor(self, ctx: CompiscriptParser.FactorContext):
     if not self.continueCodeGeneration(): return
@@ -578,6 +614,45 @@ class IntermediateCodeGenerator():
       childNode = ctx.getChild(0)
       ctx.addr = childNode.addr
       return
+    
+    # Son operaciones aritméticas
+    
+    code = None
+    numOperations = (len(ctx.children) - 1) // 2
+    
+    firstOperand = ctx.getChild(0).addr
+    
+    for i in range(numOperations):
+      
+      operatorLexeme = ctx.getChild(i * 2 + 1).getText()
+      secondOperand = ctx.getChild(i * 2 + 2).addr
+      
+      temp = self.newTemp()
+      
+      # Determinar token de operación
+      if operatorLexeme == "*":
+        operation = MULTIPLY
+      elif operatorLexeme == "/":
+        operation = DIVIDE
+      elif operatorLexeme == "%":
+        operation = MOD
+      else:
+        raise NotImplementedError("exitFactor: Operador no implementado")
+      
+      # Agregar instrucción de operación
+      instruction = SingleInstruction(result=temp, arg1=firstOperand, operator=operation, arg2=secondOperand)
+      if code == None:
+        code = instruction
+      else:
+        code.concat(instruction)
+        
+      # Actualizar primer operando con resultado de operación
+      firstOperand = temp
+      
+    # Guardar addr de resultado de operación y concatenar código
+    ctx.addr = firstOperand
+    ctx.code.concat(code)      
+      
 
   def enterArray(self, ctx: CompiscriptParser.ArrayContext):
     if not self.continueCodeGeneration(): return
