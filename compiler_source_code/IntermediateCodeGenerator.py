@@ -164,8 +164,35 @@ class IntermediateCodeGenerator():
 
   def exitIfStmt(self, ctx: CompiscriptParser.IfStmtContext):
     if not self.continueCodeGeneration(): return
-    ctx.code = self.getChildrenCode(ctx)
-
+    
+    hasElseStatement = len(ctx.statement()) > 1
+    
+    expressionNode = ctx.expression()
+    expression = expressionNode.addr
+    statementCode = ctx.statement(0).code
+    
+    ctx.code = expressionNode.code # Agregar código necesario para evaluar la expresión
+    
+    skipLabel = self.newLabel()
+    endLabel = self.newLabel()
+    
+    # Si la condición es falsa, saltar al final
+    conditionalCode = ConditionalInstruction(arg1=expression, operator=EQUAL, arg2=falseValue, goToLabel=skipLabel)
+    conditionalCode.concat(statementCode)
+    conditionalCode.concat(SingleInstruction(operator=GOTO, arg1=endLabel)) # Evitar else (si existe)
+    conditionalCode.concat(SingleInstruction(operator=LABEL, arg1=skipLabel)) # Evitar if statement
+    
+    # Si hay else, ejecutarlo
+    if hasElseStatement:
+      elseStatementCode = ctx.statement(1).code
+      conditionalCode.concat(elseStatementCode)
+      
+    # Etiqueta de fin
+    conditionalCode.concat(SingleInstruction(operator=LABEL, arg1=endLabel))
+    
+    ctx.code.concat(conditionalCode)    
+    
+    
   def enterPrintStmt(self, ctx: CompiscriptParser.PrintStmtContext):
     if not self.continueCodeGeneration(): return
 
