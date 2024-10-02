@@ -36,5 +36,8 @@ class ParamsTree:
   def removeNodeParams(self):
     """
     Elimina el grupo de parametros actual y regresa al grupo de parametros anterior.
+    return: Los parametros del nodo actual.
     """
+    currentParams = self._currentNodeParams
     self._currentNodeParams = self._currentNodeParams.parent
+    return currentParams

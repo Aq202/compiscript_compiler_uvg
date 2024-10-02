@@ -39,7 +39,9 @@ class SemanticChecker(CompiscriptListener):
     
 
     def exitDeclaration(self, ctx: CompiscriptParser.DeclarationContext):
-      return super().exitDeclaration(ctx)
+      super().exitDeclaration(ctx)
+      
+      self.intermediateCodeGenerator.exitDeclaration(ctx)
 
 
     def enterClassDecl(self, ctx: CompiscriptParser.ClassDeclContext):
@@ -101,6 +103,8 @@ class SemanticChecker(CompiscriptListener):
 
       # Volver al scope padre
       self.symbolTable.returnToParentScope()
+      
+      self.intermediateCodeGenerator.exitClassDecl(ctx)
 
 
     def enterFunDecl(self, ctx: CompiscriptParser.FunDeclContext):
@@ -108,7 +112,10 @@ class SemanticChecker(CompiscriptListener):
     
 
     def exitFunDecl(self, ctx: CompiscriptParser.FunDeclContext):
-      return super().exitFunDecl(ctx)
+      super().exitFunDecl(ctx)
+      
+      self.intermediateCodeGenerator.exitFunDecl(ctx)
+    
     
 
     def enterVarDecl(self, ctx: CompiscriptParser.VarDeclContext):
@@ -156,7 +163,8 @@ class SemanticChecker(CompiscriptListener):
     
 
     def exitStatement(self, ctx: CompiscriptParser.StatementContext):
-      return super().exitStatement(ctx)
+      super().exitStatement(ctx)
+      self.intermediateCodeGenerator.exitStatement(ctx)
 
 
     def enterBreakStmt(self, ctx: CompiscriptParser.BreakStmtContext):
@@ -173,7 +181,9 @@ class SemanticChecker(CompiscriptListener):
     
 
     def exitBreakStmt(self, ctx: CompiscriptParser.BreakStmtContext):
-      return super().exitBreakStmt(ctx)
+      super().exitBreakStmt(ctx)
+      
+      self.intermediateCodeGenerator.exitBreakStmt(ctx)
     
 
     def enterContinueStmt(self, ctx: CompiscriptParser.ContinueStmtContext):
@@ -190,7 +200,9 @@ class SemanticChecker(CompiscriptListener):
     
 
     def exitContinueStmt(self, ctx: CompiscriptParser.ContinueStmtContext):
-      return super().exitContinueStmt(ctx)
+      super().exitContinueStmt(ctx)
+      
+      self.intermediateCodeGenerator.exitContinueStmt(ctx)
     
 
     def enterExprStmt(self, ctx: CompiscriptParser.ExprStmtContext):
@@ -203,6 +215,7 @@ class SemanticChecker(CompiscriptListener):
       # Asignar tipo de nodo hijo
       ctx.type = ctx.expression().type
 
+      self.intermediateCodeGenerator.exitExprStmt(ctx)
 
     def enterForStmt(self, ctx: CompiscriptParser.ForStmtContext):
       super().enterForStmt(ctx)
@@ -241,6 +254,7 @@ class SemanticChecker(CompiscriptListener):
           # Cambiar de sección del for
           section += 1
 
+      self.intermediateCodeGenerator.exitForStmt(ctx)
 
     def enterIfStmt(self, ctx: CompiscriptParser.IfStmtContext):
       super().enterIfStmt(ctx)
@@ -269,6 +283,7 @@ class SemanticChecker(CompiscriptListener):
           self.addSemanticError(error)
           return
 
+      self.intermediateCodeGenerator.exitIfStmt(ctx)
 
     def enterPrintStmt(self, ctx: CompiscriptParser.PrintStmtContext):
       return super().enterPrintStmt(ctx)
@@ -282,6 +297,7 @@ class SemanticChecker(CompiscriptListener):
       if expression != None:
         print("\033[32mPRINT:\033[0m", expression.type)
 
+      return self.intermediateCodeGenerator.exitPrintStmt(ctx)
 
     def enterReturnStmt(self, ctx: CompiscriptParser.ReturnStmtContext):
       return super().enterReturnStmt(ctx)
@@ -353,7 +369,8 @@ class SemanticChecker(CompiscriptListener):
           error = SemanticError("La condición del while debe ser de tipo booleano.", line, column)
           self.addSemanticError(error)
           return
-
+        
+      self.intermediateCodeGenerator.exitWhileStmt(ctx)
 
     def enterBlock(self, ctx: CompiscriptParser.BlockContext):
       """
@@ -921,6 +938,7 @@ class SemanticChecker(CompiscriptListener):
       instanceDef = InstanceType(classDef)
       ctx.type = instanceDef
 
+      return self.intermediateCodeGenerator.exitInstantiation(ctx)
 
     def enterUnary(self, ctx: CompiscriptParser.UnaryContext):
       return super().enterUnary(ctx)
@@ -1277,7 +1295,11 @@ class SemanticChecker(CompiscriptListener):
     def exitFunction(self, ctx: CompiscriptParser.FunctionContext):
       super().exitFunction(ctx)
 
-      self.params.removeNodeParams()
+      nodeParams = self.params.removeNodeParams()
+      
+      functionObj = nodeParams.get("reference")
+      
+      return self.intermediateCodeGenerator.exitFunction(ctx, functionObj)
     
 
     def enterParameters(self, ctx: CompiscriptParser.ParametersContext):
