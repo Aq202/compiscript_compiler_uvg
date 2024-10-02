@@ -224,7 +224,32 @@ class IntermediateCodeGenerator():
 
   def exitWhileStmt(self, ctx: CompiscriptParser.WhileStmtContext):
     if not self.continueCodeGeneration(): return
-    ctx.code = self.getChildrenCode(ctx)
+    
+    expressionNode = ctx.expression()
+    expression = expressionNode.addr
+    statementCode = ctx.statement().code
+    
+    ctx.code = expressionNode.code # Agregar código necesario para evaluar la expresión
+    
+    repeatLabel = self.newLabel()
+    endLabel = self.newLabel()
+    
+    # Label para repetir loop
+    whileCode = SingleInstruction(operator=LABEL, arg1=repeatLabel)
+    
+    # Si la condición es falsa, saltar al final
+    whileCode.concat(ConditionalInstruction(arg1=expression, operator=EQUAL, arg2=falseValue, goToLabel=endLabel))
+    
+    # Concatenar código de statement
+    whileCode.concat(statementCode)
+    
+    # Saltar al inicio del loop
+    whileCode.concat(SingleInstruction(operator=GOTO, arg1=repeatLabel))
+    
+    # Etiqueta de fin
+    whileCode.concat(SingleInstruction(operator=LABEL, arg1=endLabel))
+    
+    ctx.code.concat(whileCode)
 
   def enterBlock(self, ctx: CompiscriptParser.BlockContext, parameters:list[ObjectType]=None):
     """
