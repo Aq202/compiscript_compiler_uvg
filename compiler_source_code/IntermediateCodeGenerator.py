@@ -229,13 +229,14 @@ class IntermediateCodeGenerator():
     expression = expressionNode.addr
     statementCode = ctx.statement().code
     
-    ctx.code = expressionNode.code # Agregar código necesario para evaluar la expresión
-    
     repeatLabel = self.newLabel()
     endLabel = self.newLabel()
     
     # Label para repetir loop
     whileCode = SingleInstruction(operator=LABEL, arg1=repeatLabel)
+    
+    # Realizar la evaluación de la expresión
+    whileCode.concat(expressionNode.code)
     
     # Si la condición es falsa, saltar al final
     whileCode.concat(ConditionalInstruction(arg1=expression, operator=EQUAL, arg2=falseValue, goToLabel=endLabel))
@@ -249,7 +250,7 @@ class IntermediateCodeGenerator():
     # Etiqueta de fin
     whileCode.concat(SingleInstruction(operator=LABEL, arg1=endLabel))
     
-    ctx.code.concat(whileCode)
+    ctx.code = whileCode
 
   def enterBlock(self, ctx: CompiscriptParser.BlockContext, parameters:list[ObjectType]=None):
     """
