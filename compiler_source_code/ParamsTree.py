@@ -41,3 +41,10 @@ class ParamsTree:
     currentParams = self._currentNodeParams
     self._currentNodeParams = self._currentNodeParams.parent
     return currentParams
+  
+
+  def getParams(self):
+    """
+    Regresa los parametros del nodo actual, sin añadir un nuevo nivel de parametros.
+    """
+    return self._currentNodeParams

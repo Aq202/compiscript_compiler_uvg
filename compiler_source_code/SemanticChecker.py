@@ -234,6 +234,8 @@ class SemanticChecker(CompiscriptListener):
       scope.setOffset(prevOffset)
       
       self.symbolTable.setScope(scope)
+      
+      self.intermediateCodeGenerator.enterForStmt(ctx)
 
 
     def exitForStmt(self, ctx: CompiscriptParser.ForStmtContext):
@@ -361,6 +363,8 @@ class SemanticChecker(CompiscriptListener):
 
       # Indicar que el siguiente bloque es un loop en parametros
       nodeParams.add("blockType", ScopeType.WHILE_LOOP) 
+      
+      self.intermediateCodeGenerator.enterWhileStmt(ctx)
 
 
     def exitWhileStmt(self, ctx: CompiscriptParser.WhileStmtContext):

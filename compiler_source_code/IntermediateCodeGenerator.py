@@ -8,6 +8,7 @@ from Value import Value
 from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, GREATER, LESS, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS
 from antlr4 import tree
 from Offset import Offset
+from ParamsTree import ParamsTree
 
 trueValue = Value(1, BoolType())
 falseValue = Value(0, BoolType())
@@ -19,6 +20,8 @@ class IntermediateCodeGenerator():
     self.tempCounter = 0
     self.labelCounter = 0
     self.stopGeneration = stopGeneration
+    
+    self.loopParams = ParamsTree() # Almacena labels de inicio y fin de loops
   
   def continueCodeGeneration(self):
     return not self.stopGeneration and len(self.semanticErrors) == 0 
@@ -137,6 +140,13 @@ class IntermediateCodeGenerator():
   def exitBreakStmt(self, ctx: CompiscriptParser.BreakStmtContext):
     if not self.continueCodeGeneration(): return
     ctx.code = self.getChildrenCode(ctx)
+    
+    # obtener label de fin de loop
+    currentParams = self.loopParams.getParams()
+    endLabel = currentParams.get("endLabel")
+    
+    # Añadir código de salto a fin de loop
+    ctx.code.concat(SingleInstruction(operator=GOTO, arg1=endLabel))
 
   def enterContinueStmt(self, ctx: CompiscriptParser.ContinueStmtContext):
     if not self.continueCodeGeneration(): return
@@ -144,6 +154,13 @@ class IntermediateCodeGenerator():
   def exitContinueStmt(self, ctx: CompiscriptParser.ContinueStmtContext):
     if not self.continueCodeGeneration(): return
     ctx.code = self.getChildrenCode(ctx)
+    
+    # obtener label de inicio de loop
+    currentParams = self.loopParams.getParams()
+    repeatLabel = currentParams.get("repeatLabel")
+    
+    # Añadir código de salto a inicio de loop
+    ctx.code.concat(SingleInstruction(operator=GOTO, arg1=repeatLabel))
 
   def enterExprStmt(self, ctx: CompiscriptParser.ExprStmtContext):
     if not self.continueCodeGeneration(): return
@@ -154,6 +171,15 @@ class IntermediateCodeGenerator():
 
   def enterForStmt(self, ctx: CompiscriptParser.ForStmtContext):
     if not self.continueCodeGeneration(): return
+    
+    # Se guaran en el nodo los labels de inicio y fin de loop
+    repeatLabel = self.newLabel()
+    endLabel = self.newLabel()
+    
+    # Guardar labels de inicio y fin de loop para hijos
+    _, currentParams = self.loopParams.initNodeParams()
+    currentParams.add("repeatLabel", repeatLabel)
+    currentParams.add("endLabel", endLabel)
 
   def exitForStmt(self, ctx: CompiscriptParser.ForStmtContext):
     if not self.continueCodeGeneration(): return
@@ -168,8 +194,8 @@ class IntermediateCodeGenerator():
     
     # Si solo hay una expresión y hay más de un elemento entre último ; y ) (no son índices continuos)
     # es la expresion de actualización. De lo contrario, es la condición
-    hasConditionExpression = len(ctx.expression()) == 2 or updateExpressionLimits[1] - updateExpressionLimits[0] == 1
-    hasUpdateExpression = len(ctx.expression()) == 2 or updateExpressionLimits[1] - updateExpressionLimits[0] > 1
+    hasConditionExpression = len(ctx.expression()) > 0 and (len(ctx.expression()) == 2 or updateExpressionLimits[1] - updateExpressionLimits[0] == 1)
+    hasUpdateExpression = len(ctx.expression()) > 0 and (len(ctx.expression()) == 2 or updateExpressionLimits[1] - updateExpressionLimits[0] > 1)
     
     code = None
     
@@ -178,8 +204,10 @@ class IntermediateCodeGenerator():
       initializationCode = ctx.varDecl().code if ctx.varDecl() != None else ctx.exprStmt().code
       code = initializationCode
     
-    repeatLabel = self.newLabel()
-    endLabel = self.newLabel()
+    # Obtener labels de inicio y fin de loop, eliminandolos del arbol de params
+    currentParams = self.loopParams.removeNodeParams()
+    repeatLabel = currentParams.get("repeatLabel")
+    endLabel = currentParams.get("endLabel")
     
     # Agregar etiqueta de inicio de loop
     repeatLabelInstruction = SingleInstruction(operator=LABEL, arg1=repeatLabel)
@@ -282,6 +310,15 @@ class IntermediateCodeGenerator():
 
   def enterWhileStmt(self, ctx: CompiscriptParser.WhileStmtContext):
     if not self.continueCodeGeneration(): return
+    
+    # Se guaran en el nodo los labels de inicio y fin de loop
+    repeatLabel = self.newLabel()
+    endLabel = self.newLabel()
+    
+    # Guardar labels de inicio y fin de loop para hijos
+    _, currentParams = self.loopParams.initNodeParams()
+    currentParams.add("repeatLabel", repeatLabel)
+    currentParams.add("endLabel", endLabel)    
 
   def exitWhileStmt(self, ctx: CompiscriptParser.WhileStmtContext):
     if not self.continueCodeGeneration(): return
@@ -290,8 +327,10 @@ class IntermediateCodeGenerator():
     expression = expressionNode.addr
     statementCode = ctx.statement().code
     
-    repeatLabel = self.newLabel()
-    endLabel = self.newLabel()
+    # Obtener labels de inicio y fin de loop, eliminandolos del arbol de params
+    currentParams = self.loopParams.removeNodeParams()
+    repeatLabel = currentParams.get("repeatLabel")
+    endLabel = currentParams.get("endLabel")
     
     # Label para repetir loop
     whileCode = SingleInstruction(operator=LABEL, arg1=repeatLabel)
