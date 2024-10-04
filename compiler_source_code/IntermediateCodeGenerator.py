@@ -157,7 +157,68 @@ class IntermediateCodeGenerator():
 
   def exitForStmt(self, ctx: CompiscriptParser.ForStmtContext):
     if not self.continueCodeGeneration(): return
-    ctx.code = self.getChildrenCode(ctx)
+    
+    # Determinar posición de último ; y ), que son los limites de la expresión de actualización
+    updateExpressionLimits = [None, None]
+    for i, child in enumerate(ctx.children):
+      if child.getText() == ";":
+        updateExpressionLimits[0] = i
+      elif child.getText() == ")":
+        updateExpressionLimits[1] = i
+    
+    # Si solo hay una expresión y hay más de un elemento entre último ; y ) (no son índices continuos)
+    # es la expresion de actualización. De lo contrario, es la condición
+    hasConditionExpression = len(ctx.expression()) == 2 or updateExpressionLimits[1] - updateExpressionLimits[0] == 1
+    hasUpdateExpression = len(ctx.expression()) == 2 or updateExpressionLimits[1] - updateExpressionLimits[0] > 1
+    
+    code = None
+    
+    if ctx.varDecl() != None or ctx.exprStmt() != None:
+      # Hay una declaración (o asignación de variable), añadir su código
+      initializationCode = ctx.varDecl().code if ctx.varDecl() != None else ctx.exprStmt().code
+      code = initializationCode
+    
+    repeatLabel = self.newLabel()
+    endLabel = self.newLabel()
+    
+    # Agregar etiqueta de inicio de loop
+    repeatLabelInstruction = SingleInstruction(operator=LABEL, arg1=repeatLabel)
+    if code == None:
+      code = repeatLabelInstruction
+    else:
+      code.concat(repeatLabelInstruction)
+      
+    
+    # Realizar la evaluación de la condición (si la hay)
+    if hasConditionExpression:
+      # Existe una condición
+      conditionExpression = ctx.expression(0)
+      
+      # Agregar código de condición
+      code.concat(conditionExpression.code)
+      
+      # Si la condición es falsa, saltar al final
+      code.concat(ConditionalInstruction(arg1=conditionExpression.addr, operator=EQUAL, arg2=falseValue, goToLabel=endLabel))
+      
+    
+    # Concatenar código de statement
+    statementCode = ctx.statement().code
+    code.concat(statementCode)
+    
+    # Agregar expresión de actualización (si la hay)
+    if hasUpdateExpression:
+      updateExpressionIndex = 1 if hasConditionExpression else 0
+      updateExpression = ctx.expression(updateExpressionIndex)
+      code.concat(updateExpression.code)
+    
+    # Saltar al inicio del loop
+    code.concat(SingleInstruction(operator=GOTO, arg1=repeatLabel))
+    
+    # Etiqueta de fin
+    code.concat(SingleInstruction(operator=LABEL, arg1=endLabel))
+    
+    ctx.code = code
+    
 
   def enterIfStmt(self, ctx: CompiscriptParser.IfStmtContext):
     if not self.continueCodeGeneration(): return
