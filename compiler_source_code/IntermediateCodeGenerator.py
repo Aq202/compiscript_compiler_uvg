@@ -5,7 +5,7 @@ from primitiveTypes import NumberType, StringType, NilType, BoolType
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, GREATER, LESS, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, GREATER, LESS, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT
 from antlr4 import tree
 from Offset import Offset
 from ParamsTree import ParamsTree
@@ -288,6 +288,8 @@ class IntermediateCodeGenerator():
   def exitPrintStmt(self, ctx: CompiscriptParser.PrintStmtContext):
     if not self.continueCodeGeneration(): return
     ctx.code = self.getChildrenCode(ctx)
+    
+    ctx.code.concat(SingleInstruction(operator=PRINT, arg1=ctx.expression().addr))
 
   def enterReturnStmt(self, ctx: CompiscriptParser.ReturnStmtContext):
     if not self.continueCodeGeneration(): return
