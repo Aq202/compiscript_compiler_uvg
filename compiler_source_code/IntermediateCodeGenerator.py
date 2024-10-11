@@ -9,6 +9,7 @@ from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL,
 from antlr4 import tree
 from Offset import Offset
 from ParamsTree import ParamsTree
+from SymbolTable import ScopeType
 
 trueValue = Value(1, BoolType())
 falseValue = Value(0, BoolType())
@@ -360,12 +361,22 @@ class IntermediateCodeGenerator():
     """
     if not self.continueCodeGeneration(): return
     
-    scope = self.symbolTable.currentScope
+    
+
+  def exitBlock(self, ctx: CompiscriptParser.BlockContext):
+    if not self.continueCodeGeneration(): return
+    
     paramsCode = None
-    # Correr offset para siguiente variable
-    if parameters is not None:
-      for i in range(len(parameters)):
-        param = parameters[i]
+    
+    scope = self.symbolTable.currentScope
+    if scope.type == ScopeType.FUNCTION:
+      
+      functionDef = scope.reference
+
+      # Código intermedio de asignación de parametros
+      for i, param in enumerate(functionDef.params):
+        
+        param = scope.searchElement(param, searchInParentScopes = False, searchInParentClasses = False, searchTemporaries = False)
         
         # Asignar un offset a la variable local que almacena params
         param.assignOffset(scope.offset, MEM_ADDR_SIZE)
@@ -377,14 +388,16 @@ class IntermediateCodeGenerator():
           paramsCode = instruction
         else:
           paramsCode.concat(instruction)
-    
 
-  def exitBlock(self, ctx: CompiscriptParser.BlockContext, isFunctionBlock:bool):
-    if not self.continueCodeGeneration(): return
-    ctx.code = self.getChildrenCode(ctx)
-    
-    # Si se sale de una función, se genera un return nil por defecto
-    if isFunctionBlock:
+      ctx.code = paramsCode
+      
+      # Añadir código de hijos (concatenado a declaración de parámetros)
+      if ctx.code == None:
+        ctx.code = self.getChildrenCode(ctx)
+      else:
+        ctx.code.concat(self.getChildrenCode(ctx))
+      
+      # Si se sale de una función, se genera un return nil por defecto
       ctx.code.concat(SingleInstruction(operator=RETURN, arg1=Value(None, NilType())))
 
   def enterFunAnon(self, ctx: CompiscriptParser.FunAnonContext, functionDef: FunctionType):

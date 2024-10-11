@@ -468,14 +468,12 @@ class SemanticChecker(CompiscriptListener):
           # Si no es ambigua, sobrescribir el tipo
           objectRef.reference.setType(objectRef.getType())
 
-
-      isFunctionScope = self.symbolTable.currentScope.type == ScopeType.FUNCTION
-
+      # Ejecutar generador de código intermedio
+      self.intermediateCodeGenerator.exitBlock(ctx)
+      
       # Volver al scope padre
       self.symbolTable.returnToParentScope()
-      
-      return self.intermediateCodeGenerator.exitBlock(ctx, isFunctionScope)
-
+    
 
     def enterFunAnon(self, ctx: CompiscriptParser.FunAnonContext):
       super().enterFunAnon(ctx)
