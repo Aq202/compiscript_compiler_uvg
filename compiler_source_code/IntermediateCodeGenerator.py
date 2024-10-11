@@ -23,6 +23,7 @@ class IntermediateCodeGenerator():
     self.stopGeneration = stopGeneration
     
     self.loopParams = ParamsTree() # Almacena labels de inicio y fin de loops
+    self.thisReferenceParams = ParamsTree() # Almacena referencias a this en métodos
   
   def continueCodeGeneration(self):
     return not self.stopGeneration and len(self.semanticErrors) == 0 
@@ -361,6 +362,14 @@ class IntermediateCodeGenerator():
     """
     if not self.continueCodeGeneration(): return
     
+    scope = self.symbolTable.currentScope
+    if scope.isMethodScope():
+        # Si es un método, crear temporal que guarda referencia a this y guardarla en params
+        thisTemp = self.newTemp()
+
+        # Guardar referencia a this en arbol de parámetros
+        _, currentParams = self.thisReferenceParams.initNodeParams()
+        currentParams.add("this", thisTemp)
     
 
   def exitBlock(self, ctx: CompiscriptParser.BlockContext):
@@ -369,9 +378,21 @@ class IntermediateCodeGenerator():
     paramsCode = None
     
     scope = self.symbolTable.currentScope
-    if scope.type == ScopeType.FUNCTION:
+    if scope.type == ScopeType.FUNCTION or scope.type == ScopeType.CONSTRUCTOR:
       
       functionDef = scope.reference
+      
+      paramsCount = 0
+      
+      if scope.isMethodScope():
+        # Si es un método, obtener temporal que guarda referencia a this y eliminarla del arbol de parámetros
+        currentParams = self.thisReferenceParams.removeNodeParams()
+        thisTemp = currentParams.get("this")
+    
+        # Guardar código intermedio de asignación de this
+        paramsCode = SingleInstruction(result=thisTemp, operator=PARAM, arg1="0")
+        
+        paramsCount += 1
 
       # Código intermedio de asignación de parametros
       for i, param in enumerate(functionDef.params):
@@ -383,7 +404,7 @@ class IntermediateCodeGenerator():
         scope.setOffset(scope.offset + MEM_ADDR_SIZE)
         
         # Guardar código intermedio de asignación de parámetros
-        instruction = SingleInstruction(result=param, operator=GET_ARG, arg1=str(i))
+        instruction = SingleInstruction(result=param, operator=GET_ARG, arg1=str(paramsCount + i))
         if paramsCode is None:
           paramsCode = instruction
         else:
@@ -448,8 +469,28 @@ class IntermediateCodeGenerator():
       # Si es una asignación a una variable
       ctx.code.concat(SingleInstruction(result=objectDef, arg1=valueAddr))
     else:
-      # Si es una asignación a un atributo de clase
-      raise NotImplementedError("Asignación a atributo de clase en CI no implementada")
+      
+      # Es una asignación de atributo
+      callNode = ctx.call()
+      identifier = ctx.IDENTIFIER().getText()
+      
+      print("hoOOLA: ", callNode.type, identifier)
+      
+      if callNode.type.strictEqualsType(ClassSelfReferenceType):
+        # Es una asignación dentro de la definición de la clase (this)
+        
+        classSelfReference = callNode.type
+        thisTemp = callNode.addr # Dirección de memoria del bloque del objeto correspondiente
+        
+        # Realizar offset relativo a la dirección de memoria del objeto
+        propertyIndex = classSelfReference.getPropertyIndex(identifier)
+        propertyPosition = Offset(thisTemp, propertyIndex * MEM_ADDR_SIZE)
+        
+        # Asignar valor a propiedad en CI
+        ctx.code.concat(SingleInstruction(result=propertyPosition, arg1=valueAddr))
+        
+        
+      
 
 
   def enterLogic_or(self, ctx: CompiscriptParser.Logic_orContext):
@@ -952,6 +993,14 @@ class IntermediateCodeGenerator():
       
       elif isinstance(nodeType, (ObjectType, FunctionType,FunctionOverload, ClassType)):
         ctx.addr = nodeType
+        
+      elif lexeme == "this":
+        
+        # Obtener referencia a this
+        currentParams = self.thisReferenceParams.getParams()
+        thisTemp = currentParams.get("this")
+        
+        ctx.addr = thisTemp
         
       
     else:

@@ -214,6 +214,12 @@ class ClassSelfReferenceType(DataType):
   def strictEqualsType(self, __class__):
     return isinstance(self, __class__)
   
+  def getPropertyIndex(self, name):
+    """
+    Retorna la posición de la propiedad en la lista de propiedades de la clase.
+    """
+    return self.classType.properties.index(name)
+  
   def __repr__(self) -> str:
     return f"ClassSelfReferenceType(classType={self.classType})"
   

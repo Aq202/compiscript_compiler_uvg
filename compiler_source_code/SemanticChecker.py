@@ -405,8 +405,8 @@ class SemanticChecker(CompiscriptListener):
       # Crear scope para el bloque
       blockScope = self.symbolTable.createScope(blockType)
       
-      if blockType != ScopeType.FUNCTION:
-        # Si no es una función, mantener el offset previo
+      if blockType != ScopeType.FUNCTION and blockType != ScopeType.CONSTRUCTOR:
+        # Si no es una función o constructor, mantener el offset previo
         prevOffset =self.symbolTable.currentScope.offset
         blockScope.setOffset(prevOffset)
         
