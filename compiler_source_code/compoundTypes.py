@@ -264,6 +264,15 @@ class InstanceType(DataType):
   def searchMethod(self, name):
     return self.localMethods.get(name)
   
+  def getPropertyIndex(self, name):
+    """
+    Retorna la posición de la propiedad en la lista de propiedades (localProperties) del objeto.
+    """
+    return self.localProperties.index(name)
+  
+  def getConstructor(self):
+    return self.classType.constructor
+  
   def getType(self):
     return self
   

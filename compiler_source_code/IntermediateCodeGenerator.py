@@ -3,7 +3,7 @@ import uuid
 from compoundTypes import ObjectType, FunctionType, ClassType, InstanceType, ClassSelfReferenceType, FunctionOverload
 from primitiveTypes import NumberType, StringType, NilType, BoolType
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
-from consts import MEM_ADDR_SIZE
+from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
 from Value import Value
 from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, GREATER, LESS, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT
 from antlr4 import tree
@@ -463,19 +463,19 @@ class IntermediateCodeGenerator():
       return
     
     valueAddr = ctx.assignment().addr
+    valueType = ctx.assignment().type
     ctx.addr = valueAddr
     
     if objectDef is not None:
       # Si es una asignación a una variable
       ctx.code.concat(SingleInstruction(result=objectDef, arg1=valueAddr))
-    else:
+      
+    elif not valueType.strictEqualsType(FunctionType): # Ignorar métodos (no se pueden asignar)
       
       # Es una asignación de atributo
       callNode = ctx.call()
       identifier = ctx.IDENTIFIER().getText()
-      
-      print("hoOOLA: ", callNode.type, identifier)
-      
+            
       if callNode.type.strictEqualsType(ClassSelfReferenceType):
         # Es una asignación dentro de la definición de la clase (this)
         
@@ -489,7 +489,18 @@ class IntermediateCodeGenerator():
         # Asignar valor a propiedad en CI
         ctx.code.concat(SingleInstruction(result=propertyPosition, arg1=valueAddr))
         
+      else:
         
+        # Es una asignación a un objeto ya instanciado
+        objectAddr = callNode.addr
+        objectType = callNode.type
+        
+        # Realizar offset relativo a la dirección de memoria del objeto
+        propertyIndex = objectType.getPropertyIndex(identifier)
+        propertyPosition = Offset(objectAddr, propertyIndex * MEM_ADDR_SIZE)
+        
+        # Asignar valor a propiedad en CI
+        ctx.code.concat(SingleInstruction(result=propertyPosition, arg1=valueAddr))
       
 
 
@@ -846,7 +857,40 @@ class IntermediateCodeGenerator():
 
   def exitInstantiation(self, ctx: CompiscriptParser.InstantiationContext):
     if not self.continueCodeGeneration(): return
-    ctx.code = self.getChildrenCode(ctx)
+    
+    instanceType = ctx.type
+    
+    # Crear en código intermedio el bloque de memoria para el objeto
+    instanceAddr = self.newTemp() # Temp guarda dirección de inicio de objeto
+    instanceCode = SingleInstruction(result=instanceAddr, arg1=MAX_PROPERTIES * MEM_ADDR_SIZE, operator=MALLOC)
+    
+    # Si tiene constructor, añadir código de constructor
+    constructor = instanceType.getConstructor()
+    if constructor != None:
+      
+      # Concatenar código necesario para otros parametros (hijos)
+      instanceCode.concat(self.getChildrenCode(ctx))
+      
+      # Añadir parametro con dirección de memoria del objeto
+      instanceCode.concat(SingleInstruction(operator=PARAM, arg1=instanceAddr))
+      
+      argsNumber = 1
+      
+      # Si hay argumentos
+      if ctx.arguments() != None: 
+        
+        argsNumber += len(ctx.arguments().expression())
+                
+        # Añadir el resto de argumentos
+        for argExpression in ctx.arguments().expression():
+          # Agregar CI de argumentos
+          instanceCode.concat(SingleInstruction(operator=PARAM, arg1=argExpression.addr))
+      
+      # Realizar llamada al constructor
+      instanceCode.concat(SingleInstruction(operator=CALL, arg1=constructor, arg2=argsNumber, operatorFirst=True))
+    
+    ctx.code = instanceCode
+    ctx.addr = instanceAddr
 
   def enterUnary(self, ctx: CompiscriptParser.UnaryContext):
     if not self.continueCodeGeneration(): return
@@ -908,10 +952,16 @@ class IntermediateCodeGenerator():
         column = token.column 
 
         if lexeme == "(":
+          # Es una llamada a función
             
           obtainedParams = 0 if ctx.arguments(0) == None else len(ctx.arguments(0).expression())
-          
           functionDef = nodeAddr
+          
+          # Agregar CI de paso de argumentos
+          if obtainedParams > 0:
+            for argExpression in ctx.arguments(0).expression():
+              ctx.code.concat(SingleInstruction(operator=PARAM, arg1=argExpression.addr))
+          
           
           # Si la función es una sobrecarga, obtener la función que corresponde a los argumentos
           if nodeAddr.strictEqualsType(FunctionOverload):
@@ -1031,7 +1081,3 @@ class IntermediateCodeGenerator():
   def exitArguments(self, ctx: CompiscriptParser.ArgumentsContext):
     if not self.continueCodeGeneration(): return
     ctx.code = self.getChildrenCode(ctx)
-    
-    for expression in ctx.expression():
-      # Agregar CI de argumentos
-      ctx.code.concat(SingleInstruction(operator=PARAM, arg1=expression.addr))
