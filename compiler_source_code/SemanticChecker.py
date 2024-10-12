@@ -1134,6 +1134,15 @@ class SemanticChecker(CompiscriptListener):
               elif node_type.strictEqualsType(InstanceType):
                 instance = node_type.getType()
                 node_type = instance.getMethod(propId)
+                
+              
+              # Validar que el método esté definido
+              if node_type == None:
+                # error semántico
+                error = SemanticError(f"El método '{propId}' no ha sido definido.", line, column)
+                self.addSemanticError(error)
+                node_type = error
+                break
               
 
           elif lexeme == "[":
