@@ -492,12 +492,12 @@ class IntermediateCodeGenerator():
       else:
         
         # Es una asignación a un objeto ya instanciado
-        objectAddr = callNode.addr
-        objectType = callNode.type
+        instanceAddr = callNode.addr
+        instanceType = callNode.type.getType()
         
         # Realizar offset relativo a la dirección de memoria del objeto
-        propertyIndex = objectType.getPropertyIndex(identifier)
-        propertyPosition = Offset(objectAddr, propertyIndex * MEM_ADDR_SIZE)
+        propertyIndex = instanceType.getPropertyIndex(identifier)
+        propertyPosition = Offset(instanceAddr, propertyIndex * MEM_ADDR_SIZE)
         
         # Asignar valor a propiedad en CI
         ctx.code.concat(SingleInstruction(result=propertyPosition, arg1=valueAddr))
