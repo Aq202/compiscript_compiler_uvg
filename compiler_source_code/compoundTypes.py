@@ -1,5 +1,6 @@
 from DataType import DataType, TypesNames
 from primitiveTypes import AnyType, NilType
+import copy
 
 class UnionType(DataType):
   def __init__(self, *types):
@@ -153,15 +154,21 @@ class ClassType(DataType):
 
     bodyScope.reference = self # Save reference to class definition in his body scope
     
-    self.properties = []
+    self.properties = dict() # {name: {type, index}}
     self.methods = dict()
     
-  def addProperty(self, name):
+  def addProperty(self, name, type, mergeType=False):
     """
     Se guarda el registro de que se creo una propiedad con el nombre indicado.
+    MergeType: Si el tipo existe y es true, se hace un merge de los tipos.
+    Si mergeType=false y la propiedad ya existe, solo se ignora.
     """
     if name not in self.properties:
-      self.properties.append(name)
+      self.properties[name] = {"type": type, "index": len(self.properties)}
+    
+    elif mergeType and self.properties[name]["type"] != type:
+      unionType = UnionType(self.properties[name]["type"], type)
+      self.properties[name]["type"] = unionType
     
   def addMethod(self, name, functionObj):
     """
@@ -172,10 +179,10 @@ class ClassType(DataType):
     else:
       self.methods[name].addOverload(functionObj)
       
-  def searchProperty(self, name):
+  def getProperty(self, name):
     return self.properties.get(name)
   
-  def searchMethod(self, name):
+  def getMethod(self, name):
     return self.methods.get(name)
 
   def equalsType(self, __class__):
@@ -197,6 +204,12 @@ class ClassType(DataType):
     funcDef = FunctionType("init")
     self.constructor = funcDef
     return funcDef
+  
+  def getMethodsLength(self):
+    """
+    Retorna la cantidad de métodos (sin contar constructor ni sobrecargas) que tiene la clase.
+    """
+    return len(self.methods)
     
   def __repr__(self) -> str:
     return f"ClassType(name={self.name}, parent={self.parent}, constructor={self.constructor}, properties={self.properties}, methods={self.methods})"
@@ -218,7 +231,7 @@ class ClassSelfReferenceType(DataType):
     """
     Retorna la posición de la propiedad en la lista de propiedades de la clase.
     """
-    return self.classType.properties.index(name)
+    return self.classType.properties[name]["index"]
   
   def __repr__(self) -> str:
     return f"ClassSelfReferenceType(classType={self.classType})"
@@ -230,8 +243,7 @@ class InstanceType(DataType):
     
     # En un inicio, realiza una copia de todas las propiedades y métodos de la clase
     # luego, guarda propiedades y métodos que se agregan posterior a instanciar la clase
-    # No es para guardar tipos, solo para verificar que en algún momento se agregó la prop o método
-    self.localProperties = classType.properties.copy()
+    self.localProperties = copy.deepcopy(classType.properties) # {name: {type, index}}
     self.localMethods = dict() # Diccionario que guarda function overloads
     
     self.copyClassMethods()
@@ -242,12 +254,22 @@ class InstanceType(DataType):
     for name, functionOverload in self.classType.methods.items():
       self.localMethods[name] = functionOverload.copy()
     
-  def addProperty(self, name):
+  def addProperty(self, name, type, overwriteType = False, mergeType=False):
     """
     Se guarda el registro de que se creo una propiedad con el nombre indicado.
+    OverwriteType: Si el tipo existe y es true, se sobreescribe el tipo de la propiedad.
+    MergeType: Si el tipo existe y es true, se hace un merge de los tipos.
+    Si overwriteType=false y mergeType=false y la propiedad ya existe, solo se ignora.
     """
     if name not in self.localProperties:
-      self.localProperties.append(name)
+      self.localProperties[name] = {"type": type, "index": len(self.localProperties)}
+    
+    elif overwriteType:
+      self.localProperties[name]["type"] = type
+    
+    elif mergeType and self.localProperties[name]["type"] != type:
+      unionType = UnionType(self.localProperties[name]["type"], type)
+      self.localProperties[name]["type"] = unionType
     
   def addMethod(self, name, functionObj):
     """
@@ -258,17 +280,17 @@ class InstanceType(DataType):
     else:
       self.localMethods[name].addOverload(functionObj)
       
-  def searchProperty(self, name):
-    return self.localProperties.get(name)
+  def getProperty(self, name):
+    return self.localProperties.get(name)["type"]
   
-  def searchMethod(self, name):
+  def getMethod(self, name):
     return self.localMethods.get(name)
   
   def getPropertyIndex(self, name):
     """
     Retorna la posición de la propiedad en la lista de propiedades (localProperties) del objeto.
     """
-    return self.localProperties.index(name)
+    return self.localProperties[name]["index"]
   
   def getConstructor(self):
     return self.classType.constructor

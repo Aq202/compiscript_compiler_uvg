@@ -30,7 +30,6 @@ class Scope:
 
     # Variables heredadas de un scope padre. Se agregan cuando se modifica el valor de una variable en un scope hijo.
     self.objectInheritances = dict()
-    self.propertyInheritances = dict()
 
     # Saves reference to class or function definition
     self.reference = None
@@ -99,19 +98,6 @@ class Scope:
       copy.setReference(originalObject)
 
       self.objectInheritances[originalObject.name] = copy
-
-  def modifyInheritedPropertyType(self, originalParam, newType):
-    """
-    Crea una copia de de un objeto heredado en un scope hijo para modificar su tipo.
-    """
-    if originalParam.name in self.propertyInheritances:
-      self.propertyInheritances[originalParam.name].setType(newType)
-    else:
-      copy = deepcopy(originalParam)
-      copy.setType(newType)
-      copy.setReference(originalParam)
-
-      self.propertyInheritances[originalParam.name] = copy
 
   def searchElement(self, name, searchInParentScopes = True, searchInParentClasses = True, searchTemporaries = False):
     """
@@ -315,7 +301,17 @@ class Scope:
         break
       scope = scope.parent
     return False
-    
+  
+  def isInsideConstructor(self):
+    """
+    Verifica si el scope actual se encuentra dentro de (o es) un constructor
+    """
+    scope = self
+    while scope is not None:
+      if scope.type == ScopeType.CONSTRUCTOR:
+        return True
+      scope = scope.parent
+    return False
 
   def isExecutionAmbiguous(self, elementStop):
     """
@@ -355,8 +351,6 @@ class Scope:
   def getInheritedObjectsList(self):
     return list(self.objectInheritances.values())
   
-  def getInheritedPropertiesList(self):
-    return list(self.propertyInheritances.values())
 
   def __repr__(self):
         return f"Scope(level={self.level}, type={self.type}, elements={self.elements}, functions={self.functions}, objectInheritances={self.objectInheritances}, reference={self.reference}"

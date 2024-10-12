@@ -444,8 +444,7 @@ class SemanticChecker(CompiscriptListener):
 
       # Si existen copias locales de objetos o params heredados
       objectInheritances = self.symbolTable.currentScope.getInheritedObjectsList()
-      propsInheritances = self.symbolTable.currentScope.getInheritedPropertiesList()
-      for objectRef in objectInheritances + propsInheritances:
+      for objectRef in objectInheritances:
 
         if objectRef.reference == None:
           continue
@@ -547,7 +546,8 @@ class SemanticChecker(CompiscriptListener):
 
         # receiver = parte izq de: receiver.method_or_property()
         # Si receiver fuera una variable, se obtendría el tipo de la variable
-        receiverType = ctx.call().type.getType() 
+        receiver = ctx.call().type
+        receiverType = receiver.getType() 
 
         if receiverType.equalsType(CompilerError):
           # Si receiver es un error, solo ignorar
@@ -564,27 +564,39 @@ class SemanticChecker(CompiscriptListener):
           self.addSemanticError(error)
           return
 
-        # Se guarda el atributo aunque siempre es any
+        # Se guarda el atributo
         
-        if receiverType.strictEqualsType(InstanceType):
-          # Si es una instancia, se agrega el atributo al objeto
+        scope = self.symbolTable.currentScope
+        
+        if assignmentValueType.strictEqualsType(FunctionType): # Es una función lo que se guarda
+          # Error semántico. Una propiead no puede ser una función
+          line = ctx.start.line
+          column = ctx.start.column
+          error = SemanticError("Una propiedad no puede ser una función. Un método debe ser declarado dentro de la definición de la clase.", line, column)
+          ctx.type = error
+          self.addSemanticError(error)
+          return
+        
+        else: # Es una propiedad
           
-          if assignmentValueType.strictEqualsType(FunctionType):
-            # Si el valor a asignar es una función, se agrega como método
-            receiverType.addMethod(identifier, assignmentValueType)
-          else:
-            # Si es cualquier otro tipo, se agrega como propiedad
-            receiverType.addProperty(identifier)
-          
-        else:
-          # Si es una referencia a la clase, se guarda en la definición de la clase
           classRef = receiverType.classType
-          if assignmentValueType.strictEqualsType(FunctionType):
-            # Si el valor a asignar es una función, se agrega como método
-            classRef.addMethod(identifier, assignmentValueType)
+          if receiver.strictEqualsType(ClassSelfReferenceType) and scope.isInsideConstructor():
+            
+            # Dentro del constructor, se asigna el tipo de las props por primera vez
+            # Si alguna cambia de tipo se hace merge
+            classRef.addProperty(identifier, assignmentValueType, mergeType=True)
           else:
-            # Si es cualquier otro tipo, se agrega como propiedad
-            classRef.addProperty(identifier)
+            # Si no se está dentro del constructor, se asigna el tipo de las props unido a NIL
+            # Si alguna cambia de tipo se hace merge
+            
+            if receiverType.strictEqualsType(ClassSelfReferenceType): # This.property
+              
+              classRef.addProperty(identifier, NilType(), mergeType=False) # Se asigna nil solo si la propiedad no existia antes
+              classRef.addProperty(identifier, assignmentValueType, mergeType=True)
+              
+            else: # Instance().property
+              receiverType.addProperty(identifier, NilType(), mergeType=False) # Se asigna nil solo si la propiedad no existia antes
+              receiverType.addProperty(identifier, assignmentValueType, mergeType=True)
           
         
         ctx.type = AnyType()
@@ -1017,7 +1029,7 @@ class SemanticChecker(CompiscriptListener):
           # Obtener el tipo del nodo primario (identificador)
           primary_context = ctx.primary()
 
-          node_type = primary_context.type.getType()
+          node_type = primary_context.type
           primary_name = child.getText()
 
         elif isinstance(child, tree.Tree.TerminalNode): # type: ignore
@@ -1045,7 +1057,7 @@ class SemanticChecker(CompiscriptListener):
               
               # Si la función es una sobrecarga, obtener la función que corresponde a los argumentos
               if node_type.strictEqualsType(FunctionOverload):
-                functionDef = node_type.getFunctionByParams(obtainedParams)
+                functionDef = node_type.getType().getFunctionByParams(obtainedParams)
 
               # Obtener el tipo de retorno de la función (solo si es exclusivamente una función)
               # Si es any, se mantiene el tipo any
@@ -1069,7 +1081,7 @@ class SemanticChecker(CompiscriptListener):
               break
 
             # Verificar si el identificador es null
-            if node_type.strictEqualsType(NilType):
+            if node_type.getType().strictEqualsType(NilType):
               # error semántico
               error = SemanticError("No se puede acceder a un atributo de un objeto nulo.", line, column)
               self.addSemanticError(error)
@@ -1086,23 +1098,43 @@ class SemanticChecker(CompiscriptListener):
             
             # Verificar si es un acceso a un atributo (no es una llamada a método)
             isProp = False
-            propId = ctx.getChild(index + 1)
+            propIdNode = ctx.getChild(index + 1)
             parenthesis = ctx.getChild(index + 2)
             
-            isProp = propId != None and (parenthesis == None or parenthesis.getText() != "(")
+            propId = propIdNode.getText()
             
-            if isProp and node_type.strictEqualsType(ClassSelfReferenceType):
-          
-              # Guardar registro que se accedió a esa prop en la clase (this.algo)
-              classDef = node_type.classType
-              classDef.addProperty(propId.getText())
+            isProp = propIdNode != None and (parenthesis == None or parenthesis.getText() != "(")
+            
+            if isProp:
+              # Se hace referencia a una propiedad
               
-            elif isProp and node_type.strictEqualsType(InstanceType):
-              # Guardar registro en el objeto (objeto.algo)
-              node_type.addProperty(propId.getText())
+              if node_type.strictEqualsType(ClassSelfReferenceType):
+                # Guardar registro que se accedió a esa prop en la clase (this.algo)
+                # Si ya tiene un tipo, no lo modifica, si no se le asigna nil
+                classDef = node_type.getType().classType
+                classDef.addProperty(propId, NilType())
+                node_type = classDef.getProperty(propId) # Devolver el tipo de la propiedad
+                
+              elif node_type.strictEqualsType(InstanceType):
+                # Guardar registro en el objeto (objeto.algo)
+                # Si ya tiene un tipo, no lo modifica, si no se le asigna nil
+                instance = node_type.getType()
+                instance.addProperty(propId, NilType())
+                node_type = instance.getProperty(propId) # Devolver el tipo de la propiedad
           
-            # Obtener el atributo de la clase (Siempre es any)
-            node_type = AnyType()
+              
+            else:
+              # Se hace referencia a un método
+              # Devolver el método(o sobrecarga) de la clase
+              
+              if node_type.strictEqualsType(ClassSelfReferenceType):
+                classDef = node_type.getType().classType
+                node_type = classDef.getMethod(propId) 
+                
+              elif node_type.strictEqualsType(InstanceType):
+                instance = node_type.getType()
+                node_type = instance.getMethod(propId)
+              
 
           elif lexeme == "[":
 
@@ -1266,6 +1298,12 @@ class SemanticChecker(CompiscriptListener):
       if isClassScope:
         #  verificar si la función es un constructor
         if functionName == "init" and isClassScope:
+          
+          if classDef.getMethodsLength() > 0:
+            # error semántico
+            error = SemanticError("El constructor de la clase debe ser definido antes de otros métodos.", ctx.start.line, ctx.start.column)
+            self.addSemanticError(error)
+            ctx.type = error
           
           if classDef.constructor == None:
             # Agregar constructor a la clase
