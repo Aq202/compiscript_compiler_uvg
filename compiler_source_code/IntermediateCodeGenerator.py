@@ -5,7 +5,7 @@ from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, GREATER, LESS, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, GREATER, LESS, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT, CONCAT
 from antlr4 import tree
 from Offset import Offset
 from ParamsTree import ParamsTree
@@ -738,6 +738,7 @@ class IntermediateCodeGenerator():
     
     code = None
     numOperations = (len(ctx.children) - 1) // 2
+    nodeType = ctx.type
     
     firstOperand = ctx.getChild(0).addr
     
@@ -751,6 +752,12 @@ class IntermediateCodeGenerator():
       # Determinar token de operación
       if operatorLexeme == "+":
         operation = PLUS
+        
+        # Si el nodo es de tipo string, concatenar
+        # Si es ambiguo, preferir suma aritmética
+        if nodeType.strictEqualsType(StringType):
+          operation = CONCAT
+          
       elif operatorLexeme == "-":
         operation = MINUS
       else:
