@@ -826,7 +826,7 @@ class SemanticChecker(CompiscriptListener):
       
       operator = ctx.getChild(1).getText() # Operador inicial (+ | -)
         
-      childTypes = [] # Va a almacenar tuplas con los tipos que puede adoptar cada nodo (number o string y number)      
+      childTypes = set() # Va a almacenar los tipos que puede adoptar cada nodo   
       hasErrors = False
       
       for child in ctx.getChildren():
@@ -850,21 +850,31 @@ class SemanticChecker(CompiscriptListener):
             error = SemanticError(f"El factor debe ser de tipo {' o '.join(typesNames)}.", line, column)
             self.addSemanticError(error)
             ctx.type = error
-            hasErrors = True
+            return self.intermediateCodeGenerator.exitTerm(ctx)
           
           else:
             
             # Determinar que tipo es el compatible (o si son ambos)
             if childType.strictEqualsType(NumberType):
-              childTypes.append(NumberType)
+              childTypes.add(NumberType)
             elif childType.strictEqualsType(StringType):
-              childTypes.append(StringType)
+              childTypes.add(StringType)
             else:
-              childTypes.append(AnyType)
+              childTypes.add(AnyType)
         
         else:
           operator = child.getText() # Cambiar operador
           
+          if operator == "-" and StringType in childTypes:
+            # error semántico. No se puede restar strings
+            token = child.getSymbol()
+            line = token.line
+            column = token.column
+            error = SemanticError(f"El factor debe ser de tipo {TypesNames.NUMBER.value}.", line, column)
+            self.addSemanticError(error)
+            ctx.type = error
+            return self.intermediateCodeGenerator.exitTerm(ctx)
+
       if not hasErrors:
         
         # Inferir tipo: Si hay un string estricto, todo es string
