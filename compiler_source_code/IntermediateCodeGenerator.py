@@ -1124,8 +1124,10 @@ class IntermediateCodeGenerator():
         ctx.addr = thisTemp
         
       
-    else:
-      pass
+    elif ctx.expression() != None:
+      # Expresión en paréntesis
+      ctx.addr = ctx.expression().addr
+      
     
   def enterFunction(self, ctx: CompiscriptParser.FunctionContext, functionDef: FunctionType):
     if not self.continueCodeGeneration(): return
