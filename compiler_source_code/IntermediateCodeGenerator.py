@@ -1,7 +1,7 @@
 from antlr.CompiscriptParser import CompiscriptParser
 import uuid
 from compoundTypes import ObjectType, FunctionType, ClassType, InstanceType, ClassSelfReferenceType, FunctionOverload
-from primitiveTypes import NumberType, StringType, NilType, BoolType
+from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
 from Value import Value
@@ -934,7 +934,11 @@ class IntermediateCodeGenerator():
       ctx.addr = childNode.addr
       return
     
+    nodeType = None
     nodeAddr = None
+    code = None
+    functionCallsCode = None
+    functionCall = False
 
     for index, child in enumerate(ctx.getChildren()):     
       
@@ -943,19 +947,20 @@ class IntermediateCodeGenerator():
         primary_context = ctx.primary()
         
         nodeAddr = primary_context.addr
+        nodeType = primary_context.type
 
       elif isinstance(child, tree.Tree.TerminalNode):
 
         token = child.getSymbol()
         lexeme = child.getText()
-        line = token.line
-        column = token.column 
+
 
         if lexeme == "(":
           # Es una llamada a función
-            
+          
+          functionCall = True
           obtainedParams = 0 if ctx.arguments(0) == None else len(ctx.arguments(0).expression())
-          functionDef = nodeAddr
+          functionDef = nodeType
           
           # Agregar CI de paso de argumentos
           if obtainedParams > 0:
@@ -964,45 +969,111 @@ class IntermediateCodeGenerator():
           
           
           # Si la función es una sobrecarga, obtener la función que corresponde a los argumentos
-          if nodeAddr.strictEqualsType(FunctionOverload):
-            functionDef = nodeAddr.getFunctionByParams(obtainedParams)
+          if nodeType.strictEqualsType(FunctionOverload):
+            functionDef = nodeType.getFunctionByParams(obtainedParams)
 
           # Añadir Ci de llamada a función
-          code = SingleInstruction(operator=CALL, arg1=functionDef, arg2=obtainedParams, operatorFirst=True)
+          callInstr = SingleInstruction(operator=CALL, arg1=functionDef, arg2=obtainedParams, operatorFirst=True)
+          
+          # Cuando se hace una llamada a una función, el código de acceso a propiedades anteriores
+          # ya no es relevante, por lo que se limpia
+          if functionCallsCode != None:
+            code = functionCallsCode.copyInstructions()
+            
+          # Concatenar solo al código de las funciones
+          if functionCallsCode == None:
+            functionCallsCode = callInstr
+          else:
+            functionCallsCode.concat(callInstr)
           
           # Crear un nuevo temporal para guardar el valor de retorno
-          offset = self.newTemp()
-          code.concat(SingleInstruction(result=offset, arg1=RETURN_VAL))
+          returnTemp = self.newTemp()
+          callInstr.concat(SingleInstruction(result=returnTemp, arg1=RETURN_VAL))
           
           # Asignar valor de retorno como addr
-          ctx.addr = offset
-          # Concatenar código
-          ctx.code.concat(code)
+          nodeAddr = returnTemp
+          
+          # Guardar tipo de retorno de la función
+          nodeType = functionDef.returnType.getType()
 
         elif lexeme == ".":
+            # Se está accediendo a un atributo de un objeto
+            functionCall = False
+                        
+            # Verificar si es un acceso a un atributo (no es una llamada a método)
+            isProp = False
+            propIdNode = ctx.getChild(index + 1)
+            parenthesis = ctx.getChild(index + 2)
+            
+            propId = propIdNode.getText()
+            
+            isProp = propIdNode != None and (parenthesis == None or parenthesis.getText() != "(")
+            
+            if isProp:
+              # Se hace referencia a una propiedad
+              if nodeType.strictEqualsType(ClassSelfReferenceType):
+                classDef = nodeType.getType().classType
+                nodeType = classDef.getProperty(propId) # Devolver el tipo de la propiedad
+                propertyIndex = classDef.getPropertyIndex(propId)
+                
+              elif nodeType.strictEqualsType(InstanceType):
+                instance = nodeType.getType()
+                nodeType = instance.getProperty(propId) # Devolver el tipo de la propiedad
+                propertyIndex = instance.getPropertyIndex(propId)
+                
+              # Realizar offset relativo a la dirección de memoria del objeto
+              propertyPosition = Offset(nodeAddr, propertyIndex * MEM_ADDR_SIZE)
+              nodeAddr = propertyPosition
           
-          # Se está accediendo a un atributo de clase
-          raise NotImplementedError("exitCall: Acceso a atributo de clase en CI no implementado")
+              
+            else:
+              # Se hace referencia a un método
+              # Devolver el método(o sobrecarga) de la clase
+              # No es necesario agregar CI, aqui solo se obtiene el tipo de la función
+              
+              if nodeType.strictEqualsType(ClassSelfReferenceType):
+                classDef = nodeType.getType().classType
+                nodeType = classDef.getMethod(propId) 
+                
+              elif nodeType.strictEqualsType(InstanceType):
+                instance = nodeType.getType()
+                nodeType = instance.getMethod(propId)
+                
+            
 
         elif lexeme == "[":
 
           # Se está accediendo a un elemento de un array
           
-          arrayBase = nodeAddr
+          functionCall = False
+          
+          arrayBase = nodeType
           
           indexToken = ctx.expression(0)
           
           # Calcular el desplazamiento: indice * tamaño de casilla
           arrayShiftTemp = self.newTemp()
-          ctx.code.concat(SingleInstruction(result=arrayShiftTemp, arg1=indexToken.addr, arg2=MEM_ADDR_SIZE, operator=MULTIPLY))
+          arrayInstr = SingleInstruction(result=arrayShiftTemp, arg1=indexToken.addr, arg2=MEM_ADDR_SIZE, operator=MULTIPLY)
+          
+          if code == None:
+            code = arrayInstr
+          else:
+            code.concat(arrayInstr)
           
           # Asignar array[arrayShift] a addr
           arrayElement = Offset(arrayBase, arrayShiftTemp)
                 
-          ctx.addr = arrayElement
+          nodeAddr = arrayElement
+          nodeType = AnyType()
           
-          
+    ctx.addr = nodeAddr # Guardar dirección de memoria de último elemento  
 
+    # Si call termina siendo una llamada, solo agregar CI de llamadas
+    if functionCall:
+      ctx.code.concat(functionCallsCode)
+    else:
+      # Si no es una llamada, agregar CI de acceso a atributos y elem. de array
+      ctx.code.concat(code)
 
 
   def enterPrimary(self, ctx: CompiscriptParser.PrimaryContext):

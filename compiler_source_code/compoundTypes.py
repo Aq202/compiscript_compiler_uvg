@@ -212,7 +212,8 @@ class ClassType(DataType):
     return len(self.methods)
     
   def __repr__(self) -> str:
-    return f"ClassType(name={self.name}, parent={self.parent}, constructor={self.constructor}, properties={self.properties}, methods={self.methods})"
+    #return f"ClassType(name={self.name}, parent={self.parent}, constructor={self.constructor}, properties={self.properties}, methods={self.methods})"
+    return f"ClassType(name={self.name}, parent={self.parent})"
 
 class ClassSelfReferenceType(DataType):
   def __init__(self, classType):
@@ -305,7 +306,8 @@ class InstanceType(DataType):
     return isinstance(self, __class__)
   
   def __repr__(self) -> str:
-    return f"InstanceType(classType={self.classType}, localProperties={self.localProperties}, localMethods={self.localMethods})"
+    #return f"InstanceType(classType={self.classType}, localProperties={self.localProperties}, localMethods={self.localMethods})"
+    return f"InstanceType(classType={self.classType.name})"
   
 class ObjectType:
   """

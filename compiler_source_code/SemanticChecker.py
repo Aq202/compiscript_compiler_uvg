@@ -577,7 +577,7 @@ class SemanticChecker(CompiscriptListener):
           self.addSemanticError(error)
           return
         
-        else: # Es una propiedad
+        elif receiver.strictEqualsType((ClassSelfReferenceType, InstanceType)): # Es una propiedad
           
           classRef = receiverType.classType
           if receiver.strictEqualsType(ClassSelfReferenceType) and scope.isInsideConstructor():

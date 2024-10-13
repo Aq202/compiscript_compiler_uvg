@@ -1,3 +1,4 @@
+import copy
 class Instruction():
   
   def __init__(self, nextInstruction) -> None:
@@ -28,7 +29,22 @@ class Instruction():
       currentInstruction = currentInstruction.nextInstruction
     
     return code
-
+  
+  def copyInstructions(self):
+    """
+    Copiar todas las instrucciones.
+    """
+    currentInstruction = self
+    newInstruction = None
+    while currentInstruction != None:
+      if newInstruction == None:
+        newInstruction = copy.copy(currentInstruction)
+      else:
+        newInstruction.concat(copy.copy(currentInstruction))
+      currentInstruction = currentInstruction.nextInstruction
+    
+    return newInstruction
+  
 class EmptyInstruction(Instruction):
   def __init__(self, nextInstruction=None) -> None:
     super().__init__(nextInstruction)
