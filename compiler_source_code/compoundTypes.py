@@ -156,9 +156,14 @@ class ClassType(DataType):
     self.constructor = None # Se pueden guardar varios constructores, con distintos # de params
 
     bodyScope.reference = self # Save reference to class definition in his body scope
-    
-    self.properties = dict() # {name: {type, index}}
-    self.methods = dict()
+        
+    if parent != None:
+      # Copiar propiedades y métodos de la clase padre
+      self.properties = copy.deepcopy(parent.properties)
+      self.methods = copy.deepcopy(parent.methods)
+    else:
+      self.methods = dict()
+      self.properties = dict() # {name: {type, index}}
     
   def addProperty(self, name, type, mergeType=False):
     """

@@ -1367,11 +1367,15 @@ class SemanticChecker(CompiscriptListener):
       isClassScope = self.symbolTable.currentScope.isClassScope()
       classDef = self.symbolTable.currentScope.reference
       
+      parentMethodsCount = 0
+      if classDef.parent != None:
+        parentMethodsCount = classDef.parent.getMethodsLength()
+      
       if isClassScope:
         #  verificar si la función es un constructor
         if functionName == "init" and isClassScope:
           
-          if classDef.getMethodsLength() > 0:
+          if classDef.getMethodsLength() > parentMethodsCount:
             # error semántico
             error = SemanticError("El constructor de la clase debe ser definido antes de otros métodos.", ctx.start.line, ctx.start.column)
             self.addSemanticError(error)
