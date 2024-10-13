@@ -547,7 +547,11 @@ class SemanticChecker(CompiscriptListener):
         # receiver = parte izq de: receiver.method_or_property()
         # Si receiver fuera una variable, se obtendría el tipo de la variable
         receiver = ctx.call().type
-        receiverType = receiver.getType() 
+        receiverType = receiver.getType()
+        receiverName = ctx.call().getText()
+        
+        line = ctx.start.line
+        column = ctx.start.column
 
         if receiverType.equalsType(CompilerError):
           # Si receiver es un error, solo ignorar
@@ -555,13 +559,19 @@ class SemanticChecker(CompiscriptListener):
           return
         
         # Validar que el receiver sea un objeto de una clase o una self-reference "this"
-        if not receiverType.equalsType(InstanceType) and not receiverType.equalsType(ClassSelfReferenceType):
+        if not receiverType.equalsType((InstanceType, ClassSelfReferenceType)):
           # error semántico
-          line = ctx.start.line
-          column = ctx.start.column
           error = SemanticError("Solo se pueden asignar atributos a objetos de una clase.", line, column)
           ctx.type = error
           self.addSemanticError(error)
+          return
+        
+        # Validar que receiver no sea un objeto ambiguo
+        if not receiverType.strictEqualsType((InstanceType, ClassSelfReferenceType)):
+          # error semántico
+          error = SemanticError(f"El identificador '{receiverName}' es ambiguo y no puede ser accedido como un objeto.", line, column)
+          self.addSemanticError(error)
+          ctx.type = error
           return
 
         # Se guarda el atributo
@@ -1020,7 +1030,7 @@ class SemanticChecker(CompiscriptListener):
     def exitCall(self, ctx: CompiscriptParser.CallContext):
       super().exitCall(ctx)
 
-      primary_name = None
+      tokenText = ""
       node_type = None
 
       for index, child in enumerate(ctx.getChildren()):     
@@ -1030,7 +1040,7 @@ class SemanticChecker(CompiscriptListener):
           primary_context = ctx.primary()
 
           node_type = primary_context.type
-          primary_name = child.getText()
+          tokenText += child.getText()
 
         elif isinstance(child, tree.Tree.TerminalNode): # type: ignore
 
@@ -1045,10 +1055,18 @@ class SemanticChecker(CompiscriptListener):
             if not node_type.equalsType(CompilerError) and not node_type.equalsType(FunctionType):
 
               # Error semántico, se está llamando a algo diferente a una función
-              error = SemanticError(f"El identificador '{primary_name}' no es una función.", line, column)
+              error = SemanticError(f"El identificador '{tokenText}' no es una función.", line, column)
               self.addSemanticError(error)
               ctx.type = error
               break
+            
+            elif not node_type.strictEqualsType((FunctionType, FunctionOverload)):
+              # Error semántico, ambiguedad de tipos
+              error = SemanticError(f"El identificador '{tokenText}' es ambiguo y no puede ser ejecutado como una función.", line, column)
+              self.addSemanticError(error)
+              ctx.type = error
+              break
+            
             elif node_type.strictEqualsType(FunctionType) or node_type.strictEqualsType(FunctionOverload) :
               
               obtainedParams = 0 if ctx.arguments(0) == None else len(ctx.arguments(0).expression())
@@ -1068,7 +1086,7 @@ class SemanticChecker(CompiscriptListener):
               if obtainedParams != len(functionDef.params):
                 # error semántico, número incorrecto de parámetros
                 expectedParams = len(functionDef.params)
-                error = SemanticError(f"La función '{primary_name}' espera {expectedParams} parámetros pero se obtuvo {obtainedParams}.", line, column)
+                error = SemanticError(f"La función '{tokenText}' espera {expectedParams} parámetros pero se obtuvo {obtainedParams}.", line, column)
                 self.addSemanticError(error)
                 node_type = error
                 break
@@ -1089,9 +1107,17 @@ class SemanticChecker(CompiscriptListener):
               break
             
             # Validar que el tipo sea un objeto o una referencia "this"
-            if not node_type.equalsType(InstanceType) and not node_type.equalsType(ClassSelfReferenceType):
+            if not node_type.equalsType((InstanceType, ClassSelfReferenceType)):
               # error semántico
-              error = SemanticError(f"El identificador '{primary_name}' no es un objeto.", line, column)
+              error = SemanticError(f"El identificador '{tokenText}' no es un objeto.", line, column)
+              self.addSemanticError(error)
+              node_type = error
+              break
+            
+            # Validar que no sea un objeto ambiguo
+            if not node_type.strictEqualsType((InstanceType, ClassSelfReferenceType)):
+              # error semántico
+              error = SemanticError(f"El identificador '{tokenText}' es ambiguo y no puede ser accedido como un objeto.", line, column)
               self.addSemanticError(error)
               node_type = error
               break
@@ -1171,6 +1197,8 @@ class SemanticChecker(CompiscriptListener):
             # Si se accede correctamente, asignar el tipo de array (AnyType siempre)
             node_type = AnyType()
 
+          # Concatenar texto
+          tokenText += lexeme
       # asignar el tipo del nodo
       ctx.type = node_type
       

@@ -339,7 +339,7 @@ class ObjectType:
     return type
 
   def equalsType(self, __class__):
-    return __class__ == AnyType or isinstance(self.type, __class__)
+    return __class__ == AnyType or self.type.equalsType(__class__)
   
   def strictEqualsType(self, __class__):
     return isinstance(self.type, __class__)
