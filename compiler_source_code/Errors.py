@@ -54,3 +54,13 @@ class SyntaxError(CompilerError):
     
     def __repr__(self):
         return f"SyntaxError(message={self.message!r}, line={self.line}, column={self.column})"
+    
+class DummyError(CompilerError):
+    def __init__(self, message):
+        self.message = message
+
+    def __str__(self):
+        return f"DummyError(message={self.message!r})"
+    
+    def __repr__(self):
+        return f"DummyError(message={self.message!r})"

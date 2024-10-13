@@ -1,7 +1,6 @@
 from DataType import DataType, TypesNames
 from primitiveTypes import AnyType, NilType
 import copy
-
 class UnionType(DataType):
   def __init__(self, *types):
     self.types = []
@@ -68,6 +67,7 @@ class FunctionType:
       self.returnType = NilType()
       self.returnTypeHasChanged = False
       self.blockReturnTypeChange = False
+      self.isMethod = False
     
     def setBodyScope(self, bodyScope):
       self.bodyScope = bodyScope
@@ -75,6 +75,9 @@ class FunctionType:
 
     def addParam(self, param):
       self.params.append(param)
+    
+    def setIsMethod(self, isMethod):
+      self.isMethod = isMethod
 
     def getType(self):
       return self
@@ -174,6 +177,7 @@ class ClassType(DataType):
     """
     Se guarda el registro de que se creo un método con el nombre indicado y parametros.
     """
+    functionObj.setIsMethod(True) # Marcar que es un método
     if name not in self.methods:
       self.methods[name] = FunctionOverload(functionObj)
     else:
@@ -183,6 +187,8 @@ class ClassType(DataType):
     return self.properties.get(name)
   
   def getMethod(self, name):
+    if name == "init":
+      return self.constructor
     return self.methods.get(name)
 
   def equalsType(self, __class__):
@@ -202,6 +208,7 @@ class ClassType(DataType):
   
   def addConstructor(self):
     funcDef = FunctionType("init")
+    funcDef.setIsMethod(True) # Marcar que es un método
     self.constructor = funcDef
     return funcDef
   
@@ -367,3 +374,22 @@ class ObjectType:
     
     
     return f"ObjectType({', '.join(repr)})"
+  
+class SuperMethodWrapper(DataType):
+  
+  def __init__(self, method):
+    """
+    thisAddr: dirección de memoria del objeto que llama al método
+    method: método a ejecutar.
+    """
+    self.method = method
+  
+  def getType(self):
+    return self.method.getType()
+  
+  def equalsType(self, __class__):
+    return __class__ == SuperMethodWrapper or self.method.equalsType(__class__)
+  
+  def strictEqualsType(self, __class__):
+    print()
+    return __class__ == SuperMethodWrapper or self.method.strictEqualsType(__class__)

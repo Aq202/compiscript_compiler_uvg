@@ -1,6 +1,6 @@
 from antlr.CompiscriptParser import CompiscriptParser
 import uuid
-from compoundTypes import ObjectType, FunctionType, ClassType, InstanceType, ClassSelfReferenceType, FunctionOverload
+from compoundTypes import ObjectType, FunctionType, ClassType, InstanceType, ClassSelfReferenceType, FunctionOverload, SuperMethodWrapper
 from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
@@ -390,7 +390,7 @@ class IntermediateCodeGenerator():
         thisTemp = currentParams.get("this")
     
         # Guardar código intermedio de asignación de this
-        paramsCode = SingleInstruction(result=thisTemp, operator=PARAM, arg1="0")
+        paramsCode = SingleInstruction(result=thisTemp, operator=GET_ARG, arg1="0")
         
         paramsCount += 1
 
@@ -421,6 +421,10 @@ class IntermediateCodeGenerator():
       # Si se sale de una función, se genera un return nil por defecto
       ctx.code.concat(SingleInstruction(operator=RETURN, arg1=Value(None, NilType())))
 
+    else:
+      # Si no es una función, concatenar código de hijos
+      ctx.code = self.getChildrenCode(ctx)
+      
   def enterFunAnon(self, ctx: CompiscriptParser.FunAnonContext, functionDef: FunctionType):
     if not self.continueCodeGeneration(): return
 
@@ -931,9 +935,14 @@ class IntermediateCodeGenerator():
   def enterCall(self, ctx: CompiscriptParser.CallContext):
     if not self.continueCodeGeneration(): return
 
-  def exitCall(self, ctx: CompiscriptParser.CallContext):
+  def exitCall(self, ctx: CompiscriptParser.CallContext, callAborted = False):
     if not self.continueCodeGeneration(): return
     ctx.code = self.getChildrenCode(ctx)
+    
+    # Si call fue abortada (sin errores críticos), no se genera código
+    if callAborted:
+      ctx.addr = None
+      return
     
     # Si es solo un nodo, pasar addr
     if len(ctx.children) == 1:
@@ -946,6 +955,7 @@ class IntermediateCodeGenerator():
     code = None
     functionCallsCode = None
     functionCall = False
+    objectAddr = None # Guarda la dirección de memoria de un bloque de memoria de un objeto (this)
 
     for index, child in enumerate(ctx.getChildren()):     
       
@@ -967,20 +977,34 @@ class IntermediateCodeGenerator():
           
           functionCall = True
           obtainedParams = 0 if ctx.arguments(0) == None else len(ctx.arguments(0).expression())
-          functionDef = nodeType
-          
-          # Agregar CI de paso de argumentos
-          if obtainedParams > 0:
-            for argExpression in ctx.arguments(0).expression():
-              ctx.code.concat(SingleInstruction(operator=PARAM, arg1=argExpression.addr))
-          
+          functionDef = nodeType.getType()
+          funCallCode = EmptyInstruction()
           
           # Si la función es una sobrecarga, obtener la función que corresponde a los argumentos
           if nodeType.strictEqualsType(FunctionOverload):
             functionDef = nodeType.getFunctionByParams(obtainedParams)
+          
+          # Si es un método, agregar como primer parametro la dirección de memoria del objeto
+          if functionDef.isMethod:
+            
+            if nodeType.strictEqualsType(SuperMethodWrapper):
+              # Si es una llamada super.method, obtener referencia de objeto this
+              currentParams = self.thisReferenceParams.getParams()
+              thisTemp = currentParams.get("this")
+              funCallCode.concat(SingleInstruction(operator=PARAM, arg1=thisTemp))
+            
+            else: # referencia normal
+              funCallCode.concat(SingleInstruction(operator=PARAM, arg1=objectAddr))
+              
+          
+          # Agregar CI de paso de argumentos
+          if obtainedParams > 0:
+            for argExpression in ctx.arguments(0).expression():
+              funCallCode.concat(SingleInstruction(operator=PARAM, arg1=argExpression.addr))
 
           # Añadir Ci de llamada a función
           callInstr = SingleInstruction(operator=CALL, arg1=functionDef, arg2=obtainedParams, operatorFirst=True)
+          funCallCode.concat(callInstr)
           
           # Cuando se hace una llamada a una función, el código de acceso a propiedades anteriores
           # ya no es relevante, por lo que se limpia
@@ -989,13 +1013,13 @@ class IntermediateCodeGenerator():
             
           # Concatenar solo al código de las funciones
           if functionCallsCode == None:
-            functionCallsCode = callInstr
+            functionCallsCode = funCallCode
           else:
-            functionCallsCode.concat(callInstr)
+            functionCallsCode.concat(funCallCode)
           
           # Crear un nuevo temporal para guardar el valor de retorno
           returnTemp = self.newTemp()
-          callInstr.concat(SingleInstruction(result=returnTemp, arg1=RETURN_VAL))
+          funCallCode.concat(SingleInstruction(result=returnTemp, arg1=RETURN_VAL))
           
           # Asignar valor de retorno como addr
           nodeAddr = returnTemp
@@ -1006,6 +1030,7 @@ class IntermediateCodeGenerator():
         elif lexeme == ".":
             # Se está accediendo a un atributo de un objeto
             functionCall = False
+            objectAddr = nodeAddr
                         
             # Verificar si es un acceso a un atributo (no es una llamada a método)
             isProp = False
@@ -1089,10 +1114,10 @@ class IntermediateCodeGenerator():
   def exitPrimary(self, ctx: CompiscriptParser.PrimaryContext):
     if not self.continueCodeGeneration(): return
     ctx.code = self.getChildrenCode(ctx)
+    nodeType = ctx.type
     
     if len(ctx.children) == 1:
       # Un solo nodo hijo
-      nodeType = ctx.type
       lexeme = ctx.getChild(0).getText()
       
       if not isinstance(ctx.getChild(0), tree.Tree.TerminalNode):
@@ -1135,6 +1160,9 @@ class IntermediateCodeGenerator():
       # Expresión en paréntesis
       ctx.addr = ctx.expression().addr
       
+    elif nodeType.strictEqualsType(SuperMethodWrapper):
+      # Se está pasando un método de clase padre (super.method)
+      ctx.addr = nodeType
     
   def enterFunction(self, ctx: CompiscriptParser.FunctionContext, functionDef: FunctionType):
     if not self.continueCodeGeneration(): return

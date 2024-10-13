@@ -3,9 +3,9 @@ from antlr.CompiscriptListener import CompiscriptListener
 from antlr.CompiscriptParser import CompiscriptParser
 from SymbolTable import SymbolTable, ScopeType
 from primitiveTypes import AnyType, NumberType, StringType, BoolType, NilType
-from compoundTypes import UnionType, InstanceType, ClassSelfReferenceType, FunctionType, FunctionOverload, ArrayType
+from compoundTypes import UnionType, InstanceType, ClassSelfReferenceType, FunctionType, FunctionOverload, ArrayType, SuperMethodWrapper
 from DataType import TypesNames
-from Errors import SemanticError, CompilerError
+from Errors import SemanticError, CompilerError, DummyError
 from ParamsTree import ParamsTree
 from IntermediateCodeGenerator import IntermediateCodeGenerator
 class SemanticChecker(CompiscriptListener):
@@ -1057,9 +1057,15 @@ class SemanticChecker(CompiscriptListener):
           token = child.getSymbol()
           lexeme = child.getText()
           line = token.line
-          column = token.column 
+          column = token.column
+          
+          # si el nodo primario es un error, ignorar resto de expresión
+          # No se genera su respectivo codigo intermedio
+          if node_type.strictEqualsType(CompilerError):
+            ctx.type = node_type
+            return self.intermediateCodeGenerator.exitCall(ctx, callAborted=True)
 
-          if lexeme == "(":
+          if lexeme == "(":           
 
             # Verificar si es una llamada a función
             if not node_type.equalsType(CompilerError) and not node_type.equalsType(FunctionType):
@@ -1071,6 +1077,7 @@ class SemanticChecker(CompiscriptListener):
               break
             
             elif not node_type.strictEqualsType((FunctionType, FunctionOverload)):
+              print("Hooola", node_type)
               # Error semántico, ambiguedad de tipos
               error = SemanticError(f"El identificador '{tokenText}' es ambiguo y no puede ser ejecutado como una función.", line, column)
               self.addSemanticError(error)
@@ -1261,12 +1268,12 @@ class SemanticChecker(CompiscriptListener):
           elif lexeme == "super":
 
             error = None
+            classDef = self.symbolTable.currentScope.getParentClass()
             # Verificar si el scope actual es una clase
-            if self.symbolTable.currentScope.getParentMethod() != None:
+            if classDef != None:
               
               # Verificar si la clase padre existe
-              classScope = self.symbolTable.currentScope.parent
-              parentClassDef = classScope.reference.parent
+              parentClassDef = classDef.parent
               if parentClassDef != None:
                 superActive = True
                 # El tipo se determina en sig iter. según el identificador super.identificador
@@ -1287,8 +1294,26 @@ class SemanticChecker(CompiscriptListener):
             # Validar identificador de clase padre (super.ident)
 
             superActive = False
-            # retornar el tipo AnyType (todas las props de clases son de tipo any)
-            ctx.type = AnyType()
+            # Busca el método correspondiente en la clase padre
+            classDef = self.symbolTable.currentScope.getParentClass()
+            parentClassDef = classDef.parent
+            
+            methodDef = parentClassDef.getMethod(lexeme)
+            
+            if methodDef == None and lexeme == "init":
+              # La clase no tiene constructor
+              # Devuelve un error dummy para que nodos superiores ignoren la expresión
+              ctx.type = DummyError("Ignorar método init inexistente")
+            
+            elif methodDef == None:
+              # error semántico
+              error = SemanticError(f"El método '{lexeme}' no ha sido definido en la clase padre.", line, column)
+              ctx.type = error
+              self.addSemanticError(error)
+              
+            else:
+              # Devolver la definición del método
+              ctx.type = SuperMethodWrapper( methodDef)
 
           
           elif type == CompiscriptParser.IDENTIFIER:
