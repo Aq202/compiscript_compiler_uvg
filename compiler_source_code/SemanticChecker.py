@@ -1367,13 +1367,14 @@ class SemanticChecker(CompiscriptListener):
 
       # Si el scope actual es una clase
       isClassScope = self.symbolTable.currentScope.isClassScope()
-      classDef = self.symbolTable.currentScope.reference
-      
-      parentMethodsCount = 0
-      if classDef.parent != None:
-        parentMethodsCount = classDef.parent.getMethodsLength()
-      
       if isClassScope:
+        
+        classDef = self.symbolTable.currentScope.reference
+        
+        parentMethodsCount = 0
+        if classDef.parent != None:
+          parentMethodsCount = classDef.parent.getMethodsLength()
+      
         #  verificar si la función es un constructor
         if functionName == "init" and isClassScope:
           
