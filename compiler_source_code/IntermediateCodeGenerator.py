@@ -980,13 +980,15 @@ class IntermediateCodeGenerator():
           functionDef = nodeType.getType()
           funCallCode = EmptyInstruction()
           
+          numOfParams = obtainedParams
+          
           # Si la función es una sobrecarga, obtener la función que corresponde a los argumentos
           if nodeType.strictEqualsType(FunctionOverload):
             functionDef = functionDef.getFunctionByParams(obtainedParams)
           
           # Si es un método, agregar como primer parametro la dirección de memoria del objeto
           if functionDef.isMethod:
-            
+            numOfParams += 1 # Tomar en cuenta param "this"
             if nodeType.strictEqualsType(SuperMethodWrapper):
               # Si es una llamada super.method, obtener referencia de objeto this
               currentParams = self.thisReferenceParams.getParams()
@@ -1003,7 +1005,7 @@ class IntermediateCodeGenerator():
               funCallCode.concat(SingleInstruction(operator=PARAM, arg1=argExpression.addr))
 
           # Añadir Ci de llamada a función
-          callInstr = SingleInstruction(operator=CALL, arg1=functionDef, arg2=obtainedParams, operatorFirst=True)
+          callInstr = SingleInstruction(operator=CALL, arg1=functionDef, arg2=numOfParams, operatorFirst=True)
           funCallCode.concat(callInstr)
           
           # Cuando se hace una llamada a una función, el código de acceso a propiedades anteriores
