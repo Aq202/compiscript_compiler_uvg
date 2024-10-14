@@ -728,7 +728,7 @@ class SemanticChecker(CompiscriptListener):
       for child in ctx.getChildren():
         if not isinstance(child, tree.Tree.TerminalNode): # type: ignore
 
-          childType = child.type
+          childType = child.type.getType()
 
           if (type != None and type.equalsType(CompilerError)):
             # Si uno de los tipos es un error, solo ignorar
@@ -775,7 +775,7 @@ class SemanticChecker(CompiscriptListener):
       for child in ctx.getChildren():
         if not isinstance(child, tree.Tree.TerminalNode): # type: ignore
 
-          childType = child.type
+          childType = child.type.getType()
 
           if type != None and type.equalsType(CompilerError):
             # Si uno de los tipos es un error, solo ignorar
