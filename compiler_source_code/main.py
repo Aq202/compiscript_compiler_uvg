@@ -56,6 +56,8 @@ def main():
         print("\nErrores en el programa:")
         for error in errors:
             print(error)
+    else:
+        print("\n\nCódigo intermedio:\n", semantic_checker.getProgramCode(), sep="")
 
 if __name__ == '__main__':
     main()

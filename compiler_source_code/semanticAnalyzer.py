@@ -8,7 +8,8 @@ def executeSemanticAnalyzer(filePath):
   """
   Ejecuta el análisis léxico, sintáctico y semántico de un código fuente.
   @param filePath: str - Ruta del archivo a analizar.
-  @return has_errors, errors: bool, list - Indica si hubo errores y lista de errores.
+  @return has_errors, errors, intermediate_code: bool, list, str - Indica si hubo errores,
+  lista de errores y código intermedio generado.
   """
   try:
     input_stream = FileStream(filePath, encoding='utf-8')
@@ -38,7 +39,7 @@ def executeSemanticAnalyzer(filePath):
     # retornar errores
     errors = lexerErrorListener.errors + parserErrorListener.errors + semantic_checker.errors
     
-    return len(errors) > 0, errors
+    return len(errors) > 0, errors, semantic_checker.getProgramCode()
 
   except Exception as e:
-    return True, [str(e)]
+    return True, [str(e)], None

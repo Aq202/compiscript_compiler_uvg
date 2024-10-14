@@ -24,6 +24,8 @@ class IntermediateCodeGenerator():
     
     self.loopParams = ParamsTree() # Almacena labels de inicio y fin de loops
     self.thisReferenceParams = ParamsTree() # Almacena referencias a this en métodos
+    
+    self.programCode = None
   
   def continueCodeGeneration(self):
     return not self.stopGeneration and len(self.semanticErrors) == 0 
@@ -70,16 +72,18 @@ class IntermediateCodeGenerator():
           code.concat(child.code)
           
     return code if code != None else EmptyInstruction()
+  
+  def getProgramCode(self):
+    if self.programCode == None:
+      return None
+    return self.programCode.getFullCode()
     
   def enterProgram(self, ctx: CompiscriptParser.ProgramContext):
     if not self.continueCodeGeneration(): return
 
   def exitProgram(self, ctx: CompiscriptParser.ProgramContext):
     if not self.continueCodeGeneration(): return
-    ctx.code = self.getChildrenCode(ctx)
-    
-    print("\nCódigo intermedio:\n", ctx.code.getFullCode())
-    
+    self.programCode = self.getChildrenCode(ctx)
 
   def enterDeclaration(self, ctx: CompiscriptParser.DeclarationContext):
     if not self.continueCodeGeneration(): return

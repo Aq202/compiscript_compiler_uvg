@@ -78,10 +78,13 @@ class EditorTab(QWidget):
     
     self.consoleLog("Ejecutando análisis del programa...")
     
-    hasErrors, errors = executeSemanticAnalyzer(filePath)
+    hasErrors, errors, code = executeSemanticAnalyzer(filePath)
     
     if not hasErrors:
         self.consoleLog("\nEl programa no contiene errores.")
+        
+        self.consoleLog("\nCódigo intermedio generado:")
+        self.consoleLog(code)        
         
     else:
         self.consoleLog("\nErrores encontrados:")

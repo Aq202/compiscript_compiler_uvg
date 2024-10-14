@@ -21,6 +21,8 @@ class SemanticChecker(CompiscriptListener):
     def addSemanticError(self, error):
       self.errors.append(error)
 
+    def getProgramCode(self):
+      return self.intermediateCodeGenerator.getProgramCode()
 
     def enterProgram(self, ctx: CompiscriptParser.ProgramContext):
       super().enterProgram(ctx)
