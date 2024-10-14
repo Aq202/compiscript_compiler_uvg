@@ -5,7 +5,7 @@ from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, GREATER, LESS, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT, CONCAT
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, GREATER, LESS, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT, CONCAT, END_FUNCTION
 from antlr4 import tree
 from Offset import Offset
 from ParamsTree import ParamsTree
@@ -424,6 +424,9 @@ class IntermediateCodeGenerator():
       
       # Si se sale de una función, se genera un return nil por defecto
       ctx.code.concat(SingleInstruction(operator=RETURN, arg1=Value(None, NilType())))
+      
+      # Indicar fin de función
+      ctx.code.concat(SingleInstruction(operator=END_FUNCTION, arg1=functionDef))
 
     else:
       # Si no es una función, concatenar código de hijos
