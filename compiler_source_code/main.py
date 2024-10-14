@@ -21,7 +21,7 @@ def create_tree(node, parser, parent=None):
 
 def main():
     #input_stream = FileStream(sys.argv[1])
-    input_stream = FileStream("D:\diego\OneDrive - UVG\Documentos Universidad\Semestre 8\compiladores\proyecto\desarrollo\compiler_source_code\prueba.txt")
+    input_stream = FileStream("D:\diego\OneDrive - UVG\Documentos Universidad\Semestre 8\compiladores\proyecto\desarrollo\compiler_source_code\prueba.txt", encoding='utf-8')
     lexer = CompiscriptLexer(input_stream)
     
     lexerErrorListener = LexerErrorListener()
