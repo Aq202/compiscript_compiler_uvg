@@ -1,5 +1,4 @@
 from enum import Enum
-import uuid
 from copy import deepcopy
 from primitiveTypes import AnyType
 from compoundTypes import FunctionType, ClassType, ObjectType, FunctionOverload
@@ -56,7 +55,7 @@ class Scope:
     Crea una definición de función anónima y la agrega a la lista de funciones del scope
     @return FunctionType. Retorna el objeto de la función creada
     """
-    functionObj = FunctionType(f"anonymous_{uuid.uuid4()}")
+    functionObj = FunctionType(f"anonymous")
     self.elements[functionObj.name] = functionObj
     return functionObj
   

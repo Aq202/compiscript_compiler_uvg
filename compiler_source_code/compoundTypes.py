@@ -1,6 +1,8 @@
 from DataType import DataType, TypesNames
 from primitiveTypes import AnyType, NilType
 import copy
+import uuid
+
 class UnionType(DataType):
   def __init__(self, *types):
     self.types = []
@@ -68,6 +70,7 @@ class FunctionType:
       self.returnTypeHasChanged = False
       self.blockReturnTypeChange = False
       self.isMethod = False
+      self.id = uuid.uuid4()
     
     def setBodyScope(self, bodyScope):
       self.bodyScope = bodyScope
@@ -98,6 +101,9 @@ class FunctionType:
 
     def getParamsInReverseOrder(self):
       return self.params[::-1]
+    
+    def getUniqueName(self):
+      return f"{self.name}_{self.id}"
 
     def __repr__(self) -> str:
       returnType = self.returnType if self.returnType != self else "FunctionType(SELF)"

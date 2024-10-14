@@ -1,4 +1,24 @@
 import copy
+from compoundTypes import ObjectType, FunctionType
+from Offset import Offset
+
+def format(value):
+  """
+  Formatear el valor para que sea legible en el código intermedio.
+  """
+  if isinstance(value, ObjectType):
+    # Variable, devolver desplazamiento
+    return f"BP[{value.offset}]"
+  
+  if isinstance(value, FunctionType):
+    # Función, devolver nombre
+    return value.getUniqueName()
+  
+  if isinstance(value, Offset):
+    return f"{format(value.base)}[{format(value.offset)}]"
+
+  return value
+
 class Instruction():
   
   def __init__(self, nextInstruction) -> None:
@@ -61,21 +81,21 @@ class SingleInstruction(Instruction):
   
   def __str__(self):
     if self.result and self.operator and self.arg1 and self.arg2:
-      return f"{self.result} = {self.arg1} {self.operator} {self.arg2}"
+      return f"{format(self.result)} = {format(self.arg1)} {self.operator} {format(self.arg2)}"
     
     if self. result and self.operator and self.arg1:
-      return f"{self.result} = {self.operator} {self.arg1}"
+      return f"{format(self.result)} = {self.operator} {format(self.arg1)}"
     
     if self.result and self.arg1:
-      return f"{self.result} = {self.arg1}"
+      return f"{format(self.result)} = {format(self.arg1)}"
     
     if self.operator and self.arg1 and self.arg2:
       if self.operatorFirst:
-        return f"{self.operator} {self.arg1} {self.arg2}"
-      return f"{self.arg1} {self.operator} {self.arg2}"
+        return f"{self.operator} {format(self.arg1)} {format(self.arg2)}"
+      return f"{format(self.arg1)} {self.operator} {format(self.arg2)}"
     
     if self.operator and self.arg1:
-      return f"{self.operator} {self.arg1}"
+      return f"{self.operator} {format(self.arg1)}"
     
 class ConditionalInstruction(Instruction):
   def __init__(self, arg1, operator, arg2, goToLabel, nextInstruction=None):
@@ -93,4 +113,4 @@ class ConditionalInstruction(Instruction):
     self.goToLabel = goToLabel
   
   def __str__(self):
-    return f"if {self.arg1} {self.operator} {self.arg2} goto {self.goToLabel}"
+    return f"if {format(self.arg1)} {self.operator} {format(self.arg2)} goto {self.goToLabel}"
