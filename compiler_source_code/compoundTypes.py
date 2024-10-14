@@ -195,7 +195,13 @@ class ClassType(DataType):
       self.methods[name].addOverload(functionObj)
       
   def getProperty(self, name):
-    return self.properties.get(name)
+    return self.properties.get(name)["type"]
+  
+  def getPropertyIndex(self, name):
+    """
+    Retorna la posición de la propiedad en la lista de propiedades de la clase.
+    """
+    return self.properties[name]["index"]
   
   def getMethod(self, name):
     if name == "init":
