@@ -52,7 +52,7 @@ class EditorTab(QWidget):
 
     if self.filePath == None:
         # Guardar archivo
-        file, _type = QFileDialog.getSaveFileName(self, "Guardar archivo", "", "Compiscript Files (*.csp)",)
+        file, _type = QFileDialog.getSaveFileName(self, "Guardar archivo", "", "Compiscript Files (*.cspt)",)
         
         if len(file) == 0: # Cancel
             return
