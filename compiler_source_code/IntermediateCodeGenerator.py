@@ -982,7 +982,7 @@ class IntermediateCodeGenerator():
           
           # Si la función es una sobrecarga, obtener la función que corresponde a los argumentos
           if nodeType.strictEqualsType(FunctionOverload):
-            functionDef = nodeType.getFunctionByParams(obtainedParams)
+            functionDef = functionDef.getFunctionByParams(obtainedParams)
           
           # Si es un método, agregar como primer parametro la dirección de memoria del objeto
           if functionDef.isMethod:
