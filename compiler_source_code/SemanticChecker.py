@@ -80,10 +80,6 @@ class SemanticChecker(CompiscriptListener):
         # Crear scope para la clase
         classScope = self.symbolTable.createScope(ScopeType.CLASS)
         
-        # Continuar con offset previo
-        prevOffset = self.symbolTable.currentScope.offset
-        classScope.setOffset(prevOffset)
-        
         # Verificar si el nombre de la clase ya ha sido declarado (solo en el scope actual)
         if self.symbolTable.currentScope.searchElement(className, searchInParentScopes=False, searchInParentClasses=False):
           # error semántico
@@ -230,10 +226,6 @@ class SemanticChecker(CompiscriptListener):
       # Añadir un scope para el for
       # No se crea en block por las declaraciones de variables al definir for
       scope = self.symbolTable.createScope(ScopeType.FOR_LOOP)
-      
-      # Mantener offset
-      prevOffset =self.symbolTable.currentScope.offset
-      scope.setOffset(prevOffset)
       
       self.symbolTable.setScope(scope)
       
@@ -407,10 +399,9 @@ class SemanticChecker(CompiscriptListener):
       # Crear scope para el bloque
       blockScope = self.symbolTable.createScope(blockType)
       
-      if blockType != ScopeType.FUNCTION and blockType != ScopeType.CONSTRUCTOR:
-        # Si no es una función o constructor, mantener el offset previo
-        prevOffset =self.symbolTable.currentScope.offset
-        blockScope.setOffset(prevOffset)
+      if blockType == ScopeType.FUNCTION or blockType == ScopeType.CONSTRUCTOR:
+        # Si es una función o constructor, el offset se reinicia y se comparte con hijos
+        blockScope.restartOffset()
         
 
       # Intenta obtener la referencia a una función de parametros proveidos por nodo superior

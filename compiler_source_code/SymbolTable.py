@@ -15,6 +15,19 @@ class ScopeType(Enum):
   CONDITIONAL = "conditional"
   GLOBAL = "global"
 
+class SharedOffset:
+  """
+  Clase que permite compartir un offset entre varios scopes
+  """
+  def __init__(self):
+    self.offset = 0
+  
+  def getOffset(self):
+    return self.offset
+  
+  def setOffset(self, offset):
+    self.offset = offset
+    
 class Scope:
   
   def __init__(self, parent, level, type = None):
@@ -33,7 +46,11 @@ class Scope:
     # Saves reference to class or function definition
     self.reference = None
     
-    self.offset = 0 # Por defecto, el offset inicial es cero
+    # Por defecto el offset es el mismo que el del padre
+    if parent is not None:
+      self.sharedOffset = parent.sharedOffset
+    else:
+      self.sharedOffset = SharedOffset()
 
   def addFunction(self, functionObj):
     """
@@ -345,7 +362,13 @@ class Scope:
     return False
   
   def setOffset(self, offset):
-    self.offset = offset
+    self.sharedOffset.setOffset(offset)
+    
+  def restartOffset(self):
+    self.sharedOffset = SharedOffset()
+    
+  def getOffset(self):
+    return self.sharedOffset.getOffset()
 
   def getInheritedObjectsList(self):
     return list(self.objectInheritances.values())

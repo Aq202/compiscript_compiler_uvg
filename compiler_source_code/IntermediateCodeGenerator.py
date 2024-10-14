@@ -42,9 +42,9 @@ class IntermediateCodeGenerator():
     
     # Asignar un offset al temporal
     scope = self.symbolTable.currentScope
-    temp.assignOffset(scope.offset, MEM_ADDR_SIZE)
+    temp.assignOffset(scope.getOffset(), MEM_ADDR_SIZE)
     # Correr offset para siguiente variable
-    scope.setOffset(scope.offset + MEM_ADDR_SIZE)
+    scope.setOffset(scope.getOffset() + MEM_ADDR_SIZE)
     
     return temp
     
@@ -117,9 +117,9 @@ class IntermediateCodeGenerator():
     
     # Asignar un offset a la variable
     scope = self.symbolTable.currentScope
-    objectDef.assignOffset(scope.offset, MEM_ADDR_SIZE)
+    objectDef.assignOffset(scope.getOffset(), MEM_ADDR_SIZE)
     
-    scope.setOffset(scope.offset + MEM_ADDR_SIZE) # Correr offset para siguiente variable
+    scope.setOffset(scope.getOffset() + MEM_ADDR_SIZE) # Correr offset para siguiente variable
     
     if expressionNode is None:
       # Asignar NIL
@@ -404,8 +404,8 @@ class IntermediateCodeGenerator():
         param = scope.searchElement(param, searchInParentScopes = False, searchInParentClasses = False, searchTemporaries = False)
         
         # Asignar un offset a la variable local que almacena params
-        param.assignOffset(scope.offset, MEM_ADDR_SIZE)
-        scope.setOffset(scope.offset + MEM_ADDR_SIZE)
+        param.assignOffset(scope.getOffset(), MEM_ADDR_SIZE)
+        scope.setOffset(scope.getOffset() + MEM_ADDR_SIZE)
         
         # Guardar código intermedio de asignación de parámetros
         instruction = SingleInstruction(result=param, operator=GET_ARG, arg1=str(paramsCount + i))
