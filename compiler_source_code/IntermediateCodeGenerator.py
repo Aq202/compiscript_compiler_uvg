@@ -520,12 +520,12 @@ class IntermediateCodeGenerator():
 
   def exitLogic_or(self, ctx: CompiscriptParser.Logic_orContext):
     if not self.continueCodeGeneration(): return
-    ctx.code = self.getChildrenCode(ctx)
-    
+        
     # Si es solo un nodo, pasar addr
     if len(ctx.children) == 1:
       childNode = ctx.getChild(0)
       ctx.addr = childNode.addr
+      ctx.code = self.getChildrenCode(ctx)
       return
     
     # Operación lógica or
@@ -539,13 +539,17 @@ class IntermediateCodeGenerator():
     for child in ctx.children:
       if isinstance(child, CompiscriptParser.Logic_andContext):
         
+        # Agregar código para evaluar expresión
+        if code == None:
+          code = child.code
+        else:
+          code.concat(child.code)
+          
         operand1 = child.addr
         
+        # Si el operando es true, saltar al final y no seguir evaluando
         conditionalCode = ConditionalInstruction(arg1=operand1, operator=EQUAL, arg2=trueValue, goToLabel=trueLabel)
-        if code == None:
-          code = conditionalCode
-        else:
-          code.concat(conditionalCode)
+        code.concat(conditionalCode)
           
     temp = self.newTemp()
     # Si ningún operando es true, asignar falseVal a temporal y saltar al final
@@ -561,19 +565,18 @@ class IntermediateCodeGenerator():
     
     # Guardar addr de resultado de operación and y concatenar código
     ctx.addr = temp
-    ctx.code.concat(code)
-
+    ctx.code = code
   def enterLogic_and(self, ctx: CompiscriptParser.Logic_andContext):
     if not self.continueCodeGeneration(): return
 
   def exitLogic_and(self, ctx: CompiscriptParser.Logic_andContext):
     if not self.continueCodeGeneration(): return
-    ctx.code = self.getChildrenCode(ctx)
     
     # Si es solo un nodo, pasar addr
     if len(ctx.children) == 1:
       childNode = ctx.getChild(0)
       ctx.addr = childNode.addr
+      ctx.code = self.getChildrenCode(ctx)
       return
     
     # Operación lógica and
@@ -587,14 +590,17 @@ class IntermediateCodeGenerator():
     for child in ctx.children:
       if isinstance(child, CompiscriptParser.EqualityContext):
         
-        operand1 = child.addr
-        
-
-        conditionalCode = ConditionalInstruction(arg1=operand1, operator=EQUAL, arg2=falseValue, goToLabel=falseLabel)
+        # Agregar código para evaluar expresión
         if code == None:
-          code = conditionalCode
+          code = child.code
         else:
-          code.concat(conditionalCode)
+          code.concat(child.code)
+        
+        operand1 = child.addr
+
+        # Si el operando es false, saltar al final y no seguir evaluando
+        conditionalCode = ConditionalInstruction(arg1=operand1, operator=EQUAL, arg2=falseValue, goToLabel=falseLabel)
+        code.concat(conditionalCode)
           
     temp = self.newTemp()
     # Si ningún operando es false, asignar trueVal a temporal y saltar al final
@@ -610,7 +616,7 @@ class IntermediateCodeGenerator():
     
     # Guardar addr de resultado de operación and y concatenar código
     ctx.addr = temp
-    ctx.code.concat(code)
+    ctx.code = code
     
     
 
