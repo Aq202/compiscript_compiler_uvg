@@ -5,7 +5,7 @@ from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, GREATER, LESS, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT, CONCAT, END_FUNCTION
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT, CONCAT, END_FUNCTION
 from antlr4 import tree
 from Offset import Offset
 from ParamsTree import ParamsTree
@@ -637,8 +637,7 @@ class IntermediateCodeGenerator():
     code = None
     numOperations = (len(ctx.children) - 1) // 2
     
-    falseLabel = self.newLabel()
-    endLabel = self.newLabel()
+    temp = self.newTemp()
     
     for i in range(numOperations):
       
@@ -647,28 +646,14 @@ class IntermediateCodeGenerator():
       operatorLexeme = ctx.getChild(firstOperandIndex + 1).getText()
       operand2 = ctx.getChild(firstOperandIndex + 2).addr
       
-      # Se escoge el operador opuesto, para no seguir evaluando 
-      # Con uno que no sea igual (o diferente), la expresión completa es falsa
-      operator = EQUAL if operatorLexeme != "==" else NOT_EQUAL
-      instruction = ConditionalInstruction(arg1=operand1, operator=operator, arg2=operand2, goToLabel=falseLabel)
+      operator = EQUAL if operatorLexeme == "==" else NOT_EQUAL
+      instruction = SingleInstruction(result=temp, arg1=operand1, operator=operator, arg2=operand2)
       
       if code == None:
         code = instruction
       else:
         code.concat(instruction)
-    
-    temp = self.newTemp()
-    # Si ninguna comparación es falsa, asignar trueVal a temporal y saltar al final
-    code.concat(SingleInstruction(result=temp, arg1=trueValue))
-    code.concat(SingleInstruction(operator=GOTO, arg1=endLabel))
-    
-    # Etiqueta de falso: asignar falseVal a temporal
-    code.concat(SingleInstruction(operator=LABEL, arg1=falseLabel))
-    code.concat(SingleInstruction(result=temp, arg1=falseValue))
-    
-    # Etiqueta de fin
-    code.concat(SingleInstruction(operator=LABEL, arg1=endLabel))
-    
+        
     # Guardar addr de resultado de operación de comparación y concatenar código
     ctx.addr = temp
     ctx.code.concat(code)
@@ -691,9 +676,8 @@ class IntermediateCodeGenerator():
     
     code = None
     numOperations = (len(ctx.children) - 1) // 2
-    
-    falseLabel = self.newLabel()
-    endLabel = self.newLabel()
+  
+    temp = self.newTemp()
     
     for i in range(numOperations):
       
@@ -705,15 +689,18 @@ class IntermediateCodeGenerator():
       # Se escoge el operador opuesto, para no seguir evaluando 
       # Con uno que no cumpla, la expresión completa es falsa
       if operator == "<":
-        instruction = ConditionalInstruction(arg1=operand1, operator=GREATER, arg2=operand2, goToLabel=falseLabel)
-        instruction.concat(ConditionalInstruction(arg1=operand1, operator=EQUAL, arg2=operand2, goToLabel=falseLabel))
+        instruction = SingleInstruction(operator=LESS, arg1=operand1, arg2=operand2, result=temp)
       elif operator == ">":
-        instruction = ConditionalInstruction(arg1=operand1, operator=LESS, arg2=operand2, goToLabel=falseLabel)
-        instruction.concat(ConditionalInstruction(arg1=operand1, operator=EQUAL, arg2=operand2, goToLabel=falseLabel))
+        lessOrEqualTemp = self.newTemp()
+        instruction = SingleInstruction(operator=LESS_EQUAL, arg1=operand1, arg2=operand2, result=lessOrEqualTemp)
+        instruction.concat(SingleInstruction(operator=NOT, arg1=lessOrEqualTemp, result=temp))
+        
       elif operator == "<=":
-        instruction = ConditionalInstruction(arg1=operand1, operator=GREATER, arg2=operand2, goToLabel=falseLabel)
+        instruction = SingleInstruction(operator=LESS_EQUAL, arg1=operand1, arg2=operand2, result=temp)
       elif operator == ">=":
-        instruction = ConditionalInstruction(arg1=operand1, operator=LESS, arg2=operand2, goToLabel=falseLabel)
+        lessTemp = self.newTemp()
+        instruction = SingleInstruction(operator=LESS, arg1=operand1, arg2=operand2, result=lessTemp)
+        instruction.concat(SingleInstruction(operator=NOT, arg1=lessTemp, result=temp))
       else:
         raise NotImplementedError("exitComparison: Operador no implementado)")
       
@@ -721,18 +708,6 @@ class IntermediateCodeGenerator():
         code = instruction
       else:
         code.concat(instruction)
-    
-    temp = self.newTemp()
-    # Si ninguna comparación es falsa, asignar trueVal a temporal y saltar al final
-    code.concat(SingleInstruction(result=temp, arg1=trueValue))
-    code.concat(SingleInstruction(operator=GOTO, arg1=endLabel))
-    
-    # Etiqueta de falso: asignar falseVal a temporal
-    code.concat(SingleInstruction(operator=LABEL, arg1=falseLabel))
-    code.concat(SingleInstruction(result=temp, arg1=falseValue))
-    
-    # Etiqueta de fin
-    code.concat(SingleInstruction(operator=LABEL, arg1=endLabel))
     
     # Guardar addr de resultado de operación de comparación y concatenar código
     ctx.addr = temp
