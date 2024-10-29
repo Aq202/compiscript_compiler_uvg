@@ -1,7 +1,7 @@
 from antlr.CompiscriptParser import CompiscriptParser
 import uuid
 from compoundTypes import ObjectType, FunctionType, ClassType, InstanceType, ClassSelfReferenceType, FunctionOverload, SuperMethodWrapper
-from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType
+from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType, FloatType, IntType
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
 from Value import Value
@@ -30,7 +30,7 @@ class IntermediateCodeGenerator():
   def continueCodeGeneration(self):
     return not self.stopGeneration and len(self.semanticErrors) == 0 
     
-  def newTemp(self):
+  def newTemp(self, type = AnyType()):
     """
     Crea un nuevo temporal y lo agrega a la tabla de simbolos
     value: debe ser un valor primitivo o un ObjectType
@@ -38,7 +38,7 @@ class IntermediateCodeGenerator():
     #tempName = f"t{self.tempCounter}-{uuid.uuid4()}"
     tempName = f"t{self.tempCounter}"
     self.tempCounter += 1
-    temp = self.symbolTable.currentScope.addTemporary(tempName)
+    temp = self.symbolTable.currentScope.addTemporary(tempName, type)
     
     # Asignar un offset al temporal
     scope = self.symbolTable.currentScope
@@ -369,6 +369,7 @@ class IntermediateCodeGenerator():
     scope = self.symbolTable.currentScope
     if scope.isMethodScope():
         # Si es un método, crear temporal que guarda referencia a this y guardarla en params
+        
         thisTemp = self.newTemp()
 
         # Guardar referencia a this en arbol de parámetros
@@ -551,7 +552,7 @@ class IntermediateCodeGenerator():
         conditionalCode = ConditionalInstruction(arg1=operand1, operator=EQUAL, arg2=trueValue, goToLabel=trueLabel)
         code.concat(conditionalCode)
           
-    temp = self.newTemp()
+    temp = self.newTemp(BoolType())
     # Si ningún operando es true, asignar falseVal a temporal y saltar al final
     code.concat(SingleInstruction(result=temp, arg1=falseValue))
     code.concat(SingleInstruction(operator=GOTO, arg1=endLabel))
@@ -602,7 +603,7 @@ class IntermediateCodeGenerator():
         conditionalCode = ConditionalInstruction(arg1=operand1, operator=EQUAL, arg2=falseValue, goToLabel=falseLabel)
         code.concat(conditionalCode)
           
-    temp = self.newTemp()
+    temp = self.newTemp(BoolType())
     # Si ningún operando es false, asignar trueVal a temporal y saltar al final
     code.concat(SingleInstruction(result=temp, arg1=trueValue))
     code.concat(SingleInstruction(operator=GOTO, arg1=endLabel))
@@ -637,7 +638,7 @@ class IntermediateCodeGenerator():
     code = None
     numOperations = (len(ctx.children) - 1) // 2
     
-    temp = self.newTemp()
+    temp = self.newTemp(BoolType())
     
     for i in range(numOperations):
       
@@ -677,7 +678,7 @@ class IntermediateCodeGenerator():
     code = None
     numOperations = (len(ctx.children) - 1) // 2
   
-    temp = self.newTemp()
+    temp = self.newTemp(BoolType())
     
     for i in range(numOperations):
       
@@ -691,14 +692,14 @@ class IntermediateCodeGenerator():
       if operator == "<":
         instruction = SingleInstruction(operator=LESS, arg1=operand1, arg2=operand2, result=temp)
       elif operator == ">":
-        lessOrEqualTemp = self.newTemp()
+        lessOrEqualTemp = self.newTemp(BoolType())
         instruction = SingleInstruction(operator=LESS_EQUAL, arg1=operand1, arg2=operand2, result=lessOrEqualTemp)
         instruction.concat(SingleInstruction(operator=NOT, arg1=lessOrEqualTemp, result=temp))
         
       elif operator == "<=":
         instruction = SingleInstruction(operator=LESS_EQUAL, arg1=operand1, arg2=operand2, result=temp)
       elif operator == ">=":
-        lessTemp = self.newTemp()
+        lessTemp = self.newTemp(BoolType())
         instruction = SingleInstruction(operator=LESS, arg1=operand1, arg2=operand2, result=lessTemp)
         instruction.concat(SingleInstruction(operator=NOT, arg1=lessTemp, result=temp))
       else:
@@ -739,7 +740,6 @@ class IntermediateCodeGenerator():
       operatorLexeme = ctx.getChild(i * 2 + 1).getText()
       secondOperand = ctx.getChild(i * 2 + 2).addr
       
-      temp = self.newTemp()
       
       # Determinar token de operación
       if operatorLexeme == "+":
@@ -754,6 +754,18 @@ class IntermediateCodeGenerator():
         operation = MINUS
       else:
         raise NotImplementedError("exitTerm: Operador no implementado")
+      
+      if firstOperand.strictEqualsType(StringType) or secondOperand.strictEqualsType(StringType):
+        # Si alguno de los operandos es string, concatenar
+        tempType = StringType()
+      elif firstOperand.strictEqualsType(IntType) and secondOperand.strictEqualsType(IntType):
+        # Si ambos operandos son enteros, resultado es entero
+        tempType = IntType()
+      else:
+        # Si uno es float o es ambiguo, resultado es float
+        tempType = FloatType()
+      
+      temp = self.newTemp(tempType)
       
       # Agregar instrucción de operación
       instruction = SingleInstruction(result=temp, arg1=firstOperand, operator=operation, arg2=secondOperand)
@@ -794,7 +806,6 @@ class IntermediateCodeGenerator():
       operatorLexeme = ctx.getChild(i * 2 + 1).getText()
       secondOperand = ctx.getChild(i * 2 + 2).addr
       
-      temp = self.newTemp()
       
       # Determinar token de operación
       if operatorLexeme == "*":
@@ -805,6 +816,16 @@ class IntermediateCodeGenerator():
         operation = MOD
       else:
         raise NotImplementedError("exitFactor: Operador no implementado")
+      
+      
+      if operatorLexeme == "/":
+        tempType = FloatType()
+      elif firstOperand.strictEqualsType(IntType) and secondOperand.strictEqualsType(IntType):
+        tempType = IntType()
+      else:
+        tempType = FloatType()
+      
+      temp = self.newTemp(tempType)
       
       # Agregar instrucción de operación
       instruction = SingleInstruction(result=temp, arg1=firstOperand, operator=operation, arg2=secondOperand)
@@ -906,7 +927,7 @@ class IntermediateCodeGenerator():
     
     operation = ctx.getChild(0).getText()
     operand = ctx.getChild(1).addr
-    temp = self.newTemp()
+    temp = self.newTemp(ctx.type)
     
     
     if operation == "-":
@@ -1008,14 +1029,15 @@ class IntermediateCodeGenerator():
             functionCallsCode.concat(funCallCode)
           
           # Crear un nuevo temporal para guardar el valor de retorno
-          returnTemp = self.newTemp()
+          returnType = functionDef.returnType.getType()
+          returnTemp = self.newTemp(returnType)
           funCallCode.concat(SingleInstruction(result=returnTemp, arg1=RETURN_VAL))
           
           # Asignar valor de retorno como addr
           nodeAddr = returnTemp
           
           # Guardar tipo de retorno de la función
-          nodeType = functionDef.returnType.getType()
+          nodeType = returnType
 
         elif lexeme == ".":
             # Se está accediendo a un atributo de un objeto
@@ -1117,18 +1139,18 @@ class IntermediateCodeGenerator():
       elif isinstance(nodeType,(NumberType, StringType)):
         
         # Crear un nuevo temporal con valor
-        temp = self.newTemp()
+        temp = self.newTemp(ctx.type)
         # Guardar asignación en CI
         ctx.code.concat(SingleInstruction(result=temp, arg1=Value(lexeme, nodeType)))
         ctx.addr = temp
         
       elif isinstance(nodeType, NilType):
-        temp = self.newTemp()
+        temp = self.newTemp(ctx.type)
         ctx.code.concat(SingleInstruction(result=temp, arg1=Value(None, NilType())))
         ctx.addr = temp
         
       elif isinstance(nodeType, BoolType):
-        temp = self.newTemp()
+        temp = self.newTemp(ctx.type)
         
         val = trueValue if lexeme == "true" else falseValue
         ctx.code.concat(SingleInstruction(result=temp, arg1=val))
