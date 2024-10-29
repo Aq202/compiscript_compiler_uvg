@@ -2,7 +2,7 @@ from antlr4 import *
 from antlr.CompiscriptListener import CompiscriptListener
 from antlr.CompiscriptParser import CompiscriptParser
 from SymbolTable import SymbolTable, ScopeType
-from primitiveTypes import AnyType, NumberType, StringType, BoolType, NilType
+from primitiveTypes import AnyType, NumberType, StringType, BoolType, NilType, IntType, FloatType
 from compoundTypes import UnionType, InstanceType, ClassSelfReferenceType, FunctionType, FunctionOverload, ArrayType, SuperMethodWrapper
 from DataType import TypesNames
 from Errors import SemanticError, CompilerError, DummyError
@@ -824,7 +824,7 @@ class SemanticChecker(CompiscriptListener):
       
       for child in ctx.getChildren():
         
-        validTypes = (NumberType, StringType) if operator == "+" else (NumberType,)
+        validTypes = (FloatType, IntType, StringType) if operator == "+" else (FloatType, IntType,)
         typesNames = (TypesNames.NUMBER.value, TypesNames.STRING.value) if operator == "+" else (TypesNames.NUMBER.value,)
     
         if not isinstance(child, tree.Tree.TerminalNode): # type: ignore # terminales (+ | -)
@@ -849,7 +849,13 @@ class SemanticChecker(CompiscriptListener):
             
             # Determinar que tipo es el compatible (o si son ambos)
             if childType.strictEqualsType(NumberType):
-              childTypes.add(NumberType)
+              # Si algún número es float, remover el tipo int
+              if childType.equalsType(FloatType):
+                childTypes.discard(IntType)
+                childTypes.add(FloatType)
+              else:
+                childTypes.add(IntType)
+                
             elif childType.strictEqualsType(StringType):
               childTypes.add(StringType)
             else:
@@ -872,14 +878,17 @@ class SemanticChecker(CompiscriptListener):
         
         # Inferir tipo: Si hay un string estricto, todo es string
         # Si hay un any y no hay strings, puede ser ambos tipos
-        # si solo hay numbers, el resultado es number
+        # si solo hay numbers y hay floats, el resultado es float
+        # si solo hay numbers y no hay floats, el resultado es int
         
         if StringType in childTypes:
           ctx.type = StringType()
         elif AnyType in childTypes:
           ctx.type = UnionType(NumberType(), StringType())
+        elif FloatType in childTypes:
+          ctx.type = FloatType()
         else:
-          ctx.type = NumberType()
+          ctx.type = IntType()
 
       return self.intermediateCodeGenerator.exitTerm(ctx)
 
@@ -898,7 +907,7 @@ class SemanticChecker(CompiscriptListener):
 
       # Si hay más de un factor, verificar que todos sean numéricos
       
-      ctx.type = NumberType() # Tipo numérico por defecto (puede cambiar a error)
+      ctx.type = IntType() # Tipo entero por defecto (puede cambiar a error)
 
       for child in ctx.getChildren():
         if not isinstance(child, tree.Tree.TerminalNode): # type: ignore
@@ -916,6 +925,15 @@ class SemanticChecker(CompiscriptListener):
             error = SemanticError("El factor debe ser de tipo numérico.", line, column)
             self.addSemanticError(error)
             ctx.type = error
+            
+          # Si uno de los factores es float o any, cambiar a tipo float
+          if childType.equalsType(FloatType) and not childType.equalsType(CompilerError):
+            ctx.type = FloatType()
+        else:
+          # Terminales
+          if child.getText() == "/":
+            # Si hay una división, el tipo es float
+            ctx.type = FloatType()
             
       return self.intermediateCodeGenerator.exitFactor(ctx)
 
@@ -1237,7 +1255,10 @@ class SemanticChecker(CompiscriptListener):
           column = token.column 
 
           if type == CompiscriptParser.NUMBER:
-            ctx.type = NumberType()
+            if "." in lexeme:
+              ctx.type = FloatType()
+            else:
+              ctx.type = IntType()
           elif type == CompiscriptParser.STRING:
             ctx.type = StringType()
           elif lexeme == "true" or lexeme == "false":

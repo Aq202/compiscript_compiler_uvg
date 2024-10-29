@@ -61,13 +61,29 @@ class PrimitiveType(DataType):
     return isinstance(self, __class__)
 
 class NumberType(PrimitiveType):
-  def __init__(self):
-    super().__init__(TypesNames.NUMBER.value)
+  def __init__(self, name = TypesNames.NUMBER.value):
+    super().__init__(name)
 
   def __eq__(self, other):
     # Sobreescribir __eq__ para que todos los objetos de NumberType sean iguales
     return isinstance(other, NumberType)
   
+class IntType(NumberType):
+  def __init__(self):
+    super().__init__(TypesNames.INT.value)
+
+  def __eq__(self, other):
+    # Sobreescribir __eq__ para que todos los objetos de NumberType sean iguales
+    return isinstance(other, IntType)
+
+class FloatType(NumberType):
+  def __init__(self):
+    super().__init__(TypesNames.FLOAT.value)
+
+  def __eq__(self, other):
+    # Sobreescribir __eq__ para que todos los objetos de NumberType sean iguales
+    return isinstance(other, FloatType)
+
 class StringType(PrimitiveType):
   def __init__(self):
     super().__init__(TypesNames.STRING.value)

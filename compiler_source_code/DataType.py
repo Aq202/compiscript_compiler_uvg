@@ -17,6 +17,8 @@ class DataType(ABC):
   
 class TypesNames(Enum):
 
+  INT = "int"
+  FLOAT = "float"
   NUMBER = "number"
   BOOL = "bool"
   CLASS = "class"
