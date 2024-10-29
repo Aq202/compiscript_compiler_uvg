@@ -5,7 +5,7 @@ from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType, F
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT, CONCAT, END_FUNCTION
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING
 from antlr4 import tree
 from Offset import Offset
 from ParamsTree import ParamsTree
@@ -447,8 +447,73 @@ class IntermediateCodeGenerator():
     
     # Retornar dirección de función anónima
     ctx.addr = functionDef
-    
 
+  def enterInputStmt(self, ctx:CompiscriptParser.InputStmtContext):
+    if not self.continueCodeGeneration(): return
+
+  def exitInputStmt(self, ctx:CompiscriptParser.InputStmtContext):
+    if not self.continueCodeGeneration(): return
+    
+    ctx.code = self.getChildrenCode(ctx)
+    ctx.addr = ctx.getChild(0).addr
+    
+  
+  
+  def enterInput(self, ctx:CompiscriptParser.InputContext):
+    if not self.continueCodeGeneration(): return
+
+
+  def exitInput(self, ctx:CompiscriptParser.InputContext):
+    if not self.continueCodeGeneration(): return
+    ctx.code = self.getChildrenCode(ctx)
+    ctx.addr = ctx.getChild(0).addr
+
+  def enterInputFloat(self, ctx:CompiscriptParser.InputFloatContext):
+    if not self.continueCodeGeneration(): return
+        
+
+  def exitInputFloat(self, ctx:CompiscriptParser.InputFloatContext):
+    if not self.continueCodeGeneration(): return
+    
+    printMessage = ctx.getChild(1).getText()
+    code = SingleInstruction(operator=PRINT, arg1=printMessage)
+    
+    temp = self.newTemp(FloatType())
+    code.concat(SingleInstruction(operator=INPUT_FLOAT, result=temp))
+    ctx.code = code
+    ctx.addr = temp
+    
+  def enterInputInt(self, ctx:CompiscriptParser.InputIntContext):
+    if not self.continueCodeGeneration(): return
+    
+  def exitInputInt(self, ctx:CompiscriptParser.InputIntContext):
+    if not self.continueCodeGeneration(): return
+    
+    printMessage = ctx.getChild(1).getText()
+    code = SingleInstruction(operator=PRINT, arg1=printMessage)
+    
+    temp = self.newTemp(IntType())
+    code.concat(SingleInstruction(operator=INPUT_INT, result=temp))
+    ctx.code = code
+    ctx.addr = temp
+
+  def enterInputString(self, ctx:CompiscriptParser.InputStringContext):
+    if not self.continueCodeGeneration(): return
+
+  def exitInputString(self, ctx:CompiscriptParser.InputStringContext):
+    if not self.continueCodeGeneration(): return
+    
+    printMessage = ctx.getChild(1).getText()
+    code = SingleInstruction(operator=PRINT, arg1=printMessage)
+    
+    temp = self.newTemp(StringType())
+    
+    stringLength = ctx.getChild(3).getText()
+    code.concat(SingleInstruction(operator=INPUT_STRING, arg1=stringLength, result=temp,  operatorFirst=True))
+    ctx.code = code
+    ctx.addr = temp
+    
+    
   def enterExpression(self, ctx: CompiscriptParser.ExpressionContext):
     if not self.continueCodeGeneration(): return
 

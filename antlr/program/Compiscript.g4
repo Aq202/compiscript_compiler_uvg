@@ -15,6 +15,7 @@ statement       : exprStmt
                 | forStmt
                 | ifStmt
                 | printStmt
+                | inputStmt
                 | returnStmt
                 | whileStmt
                 | breakStmt
@@ -32,11 +33,19 @@ returnStmt      : 'return' expression? ';' ;
 whileStmt       : 'while' '(' expression ')' statement ;
 block           : '{' declaration* '}' ;
 funAnon         : 'fun' '(' parameters? ')' block;
+inputStmt       : input ';' ;
+
+input: inputFloat | inputInt | inputString ;
+
+inputFloat  : 'inputFloat' STRING ;
+inputInt    : 'inputInt' STRING ;
+inputString : 'inputString' STRING ',' NUMBER ;
 
 expression      : assignment;
 
 assignment      : (call '.')? IDENTIFIER '=' assignment
-                | logic_or;
+                | logic_or
+                | input ;
 
 logic_or        : logic_and ('or' logic_and)* ;
 logic_and       : equality ('and' equality)* ;

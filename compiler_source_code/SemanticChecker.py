@@ -495,10 +495,55 @@ class SemanticChecker(CompiscriptListener):
       
       self.intermediateCodeGenerator.exitFunAnon(ctx, functionDef)
 
+    
+    def enterInputStmt(self, ctx:CompiscriptParser.InputStmtContext):
+      return super().enterInputStmt(ctx)
+
+
+    def exitInputStmt(self, ctx:CompiscriptParser.InputStmtContext):
+      ctx.type = ctx.getChild(0).type
+      print(ctx.type)
+      return self.intermediateCodeGenerator.exitInputStmt(ctx)
+
+    def enterInput(self, ctx:CompiscriptParser.InputContext):
+      return super().enterInput(ctx)
+
+
+    def exitInput(self, ctx:CompiscriptParser.InputContext):
+      ctx.type = ctx.getChild(0).type
+      return self.intermediateCodeGenerator.exitInput(ctx)
+    
+    
+    def enterInputFloat(self, ctx:CompiscriptParser.InputFloatContext):
+      return super().enterInputFloat(ctx)
+
+
+    def exitInputFloat(self, ctx:CompiscriptParser.InputFloatContext):
+      ctx.type = FloatType()
+      return self.intermediateCodeGenerator.exitInputFloat(ctx)
+
+
+    def enterInputInt(self, ctx:CompiscriptParser.InputIntContext):
+      return super().enterInputInt(ctx)
+
+
+    def exitInputInt(self, ctx:CompiscriptParser.InputIntContext):
+      ctx.type = IntType()
+      return self.intermediateCodeGenerator.exitInputInt(ctx)
+
+
+    def enterInputString(self, ctx:CompiscriptParser.InputStringContext):
+      return super().enterInputString(ctx)
+
+
+    def exitInputString(self, ctx:CompiscriptParser.InputStringContext):
+      ctx.type = StringType()
+      return self.intermediateCodeGenerator.exitInputString(ctx)
+
 
     def enterExpression(self, ctx: CompiscriptParser.ExpressionContext):
       return super().enterExpression(ctx)
-    
+
 
     def exitExpression(self, ctx: CompiscriptParser.ExpressionContext):
       super().exitExpression(ctx)
@@ -516,7 +561,7 @@ class SemanticChecker(CompiscriptListener):
     def exitAssignment(self, ctx: CompiscriptParser.AssignmentContext):
       super().exitAssignment(ctx)
 
-      ctx.type = None
+      ctx.type = NilType()
 
       if ctx.children == None:
         # No se proporcionó un valor para la asignación
@@ -524,7 +569,7 @@ class SemanticChecker(CompiscriptListener):
 
       if len(ctx.children) == 1:
         # Solo es un nodo primario
-        ctx.type = ctx.logic_or().type if ctx.logic_or() != None else None
+        ctx.type = ctx.getChild(0).type
         return self.intermediateCodeGenerator.exitAssignment(ctx)
       
       if ctx.assignment() == None:

@@ -152,6 +152,51 @@ class CompiscriptListener(ParseTreeListener):
         pass
 
 
+    # Enter a parse tree produced by CompiscriptParser#inputStmt.
+    def enterInputStmt(self, ctx:CompiscriptParser.InputStmtContext):
+        pass
+
+    # Exit a parse tree produced by CompiscriptParser#inputStmt.
+    def exitInputStmt(self, ctx:CompiscriptParser.InputStmtContext):
+        pass
+
+
+    # Enter a parse tree produced by CompiscriptParser#input.
+    def enterInput(self, ctx:CompiscriptParser.InputContext):
+        pass
+
+    # Exit a parse tree produced by CompiscriptParser#input.
+    def exitInput(self, ctx:CompiscriptParser.InputContext):
+        pass
+
+
+    # Enter a parse tree produced by CompiscriptParser#inputFloat.
+    def enterInputFloat(self, ctx:CompiscriptParser.InputFloatContext):
+        pass
+
+    # Exit a parse tree produced by CompiscriptParser#inputFloat.
+    def exitInputFloat(self, ctx:CompiscriptParser.InputFloatContext):
+        pass
+
+
+    # Enter a parse tree produced by CompiscriptParser#inputInt.
+    def enterInputInt(self, ctx:CompiscriptParser.InputIntContext):
+        pass
+
+    # Exit a parse tree produced by CompiscriptParser#inputInt.
+    def exitInputInt(self, ctx:CompiscriptParser.InputIntContext):
+        pass
+
+
+    # Enter a parse tree produced by CompiscriptParser#inputString.
+    def enterInputString(self, ctx:CompiscriptParser.InputStringContext):
+        pass
+
+    # Exit a parse tree produced by CompiscriptParser#inputString.
+    def exitInputString(self, ctx:CompiscriptParser.InputStringContext):
+        pass
+
+
     # Enter a parse tree produced by CompiscriptParser#expression.
     def enterExpression(self, ctx:CompiscriptParser.ExpressionContext):
         pass
