@@ -8,7 +8,7 @@ def format(value):
   """
   if isinstance(value, ObjectType):
     # Variable, devolver desplazamiento
-    return f"BP[{value.offset}] : {value.type}"
+    return f"{value.baseType}[{value.offset}] : {value.type}"
   
   if isinstance(value, FunctionType):
     # Función, devolver nombre

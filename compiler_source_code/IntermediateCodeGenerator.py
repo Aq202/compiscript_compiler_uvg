@@ -5,7 +5,7 @@ from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType, F
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER
 from antlr4 import tree
 from Offset import Offset
 from ParamsTree import ParamsTree
@@ -40,9 +40,16 @@ class IntermediateCodeGenerator():
     self.tempCounter += 1
     temp = self.symbolTable.currentScope.addTemporary(tempName, type)
     
+    scope = self.symbolTable.currentScope
+    
+    # Validar si la temporal se declara en una función, para determinar si la base
+    # del offset es el stack pointer o el static pointer
+    isInsideFunction = scope.getParentFunction(searchInParentScopes=True) is not None
+    basePointer = STACK_POINTER if isInsideFunction else STATIC_POINTER
+    
     # Asignar un offset al temporal
     scope = self.symbolTable.currentScope
-    temp.assignOffset(scope.getOffset(), MEM_ADDR_SIZE)
+    temp.assignOffset(scope.getOffset(), MEM_ADDR_SIZE, basePointer)
     # Correr offset para siguiente variable
     scope.setOffset(scope.getOffset() + MEM_ADDR_SIZE)
     
@@ -117,7 +124,13 @@ class IntermediateCodeGenerator():
     
     # Asignar un offset a la variable
     scope = self.symbolTable.currentScope
-    objectDef.assignOffset(scope.getOffset(), MEM_ADDR_SIZE)
+    
+    # Validar si la variable se declara en una función, para determinar si la base
+    # del offset es el stack pointer o el static pointer
+    isInsideFunction = scope.getParentFunction(searchInParentScopes=True) is not None
+    basePointer = STACK_POINTER if isInsideFunction else STATIC_POINTER
+    
+    objectDef.assignOffset(scope.getOffset(), MEM_ADDR_SIZE, basePointer)
     
     scope.setOffset(scope.getOffset() + MEM_ADDR_SIZE) # Correr offset para siguiente variable
     
@@ -405,7 +418,7 @@ class IntermediateCodeGenerator():
         param = scope.searchElement(param, searchInParentScopes = False, searchInParentClasses = False, searchTemporaries = False)
         
         # Asignar un offset a la variable local que almacena params
-        param.assignOffset(scope.getOffset(), MEM_ADDR_SIZE)
+        param.assignOffset(scope.getOffset(), MEM_ADDR_SIZE, STACK_POINTER)
         scope.setOffset(scope.getOffset() + MEM_ADDR_SIZE)
         
         # Guardar código intermedio de asignación de parámetros

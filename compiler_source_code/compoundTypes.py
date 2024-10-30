@@ -350,6 +350,7 @@ class ObjectType:
     self.reference = reference
     self.offset = None
     self.size = None
+    self.baseType = None
 
   def getType(self):
     """
@@ -375,9 +376,10 @@ class ObjectType:
     self.reference = reference
     
     
-  def assignOffset(self, offset, size):
+  def assignOffset(self, offset, size, baseType):
     self.offset = offset
     self.size = size
+    self.baseType = baseType
 
   def __repr__(self):
     reference = self.reference if self.reference != self else "ObjectType(SELF)"
