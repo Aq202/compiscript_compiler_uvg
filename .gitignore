@@ -3,3 +3,4 @@
 */__pycache__/*
 compiler_source_code/antlr/__pycache__/*
 /examples/*
+compiler_source_code/utils/__pycache__

@@ -39,15 +39,14 @@ class Instruction():
   
   def getFullCode(self):
     """
-    Obtener el código de todas las instrucciones concatenadas.
+    Obtener el código de todas las instrucciones en una lista.
     """
     currentInstruction = self
-    code = ""
+    code = []
     while currentInstruction != None:
       if not isinstance(currentInstruction, EmptyInstruction):
-        code += str(currentInstruction) + "\n"
+        code.append(currentInstruction)
       currentInstruction = currentInstruction.nextInstruction
-    
     return code
   
   def copyInstructions(self):

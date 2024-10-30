@@ -7,7 +7,8 @@ from anytree import Node, RenderTree, AsciiStyle
 from anytree.exporter import DotExporter
 from SemanticChecker import SemanticChecker
 from ErrorListener import LexerErrorListener, ParserErrorListener
-
+from AssemblyGenerator import AssemblyGenerator
+from utils.copyToClipboard import copyToClipboard
 
 def create_tree(node, parser, parent=None):
     if node.getChildCount() == 0:  # Es una hoja
@@ -57,7 +58,13 @@ def main():
         for error in errors:
             print(error)
     else:
-        print("\n\nCódigo intermedio:\n", semantic_checker.getProgramCode(), sep="")
+        code = semantic_checker.getProgramCode()
+        print("\n\nCódigo intermedio:\n", "\n".join([str(line) for line in code]), sep="")
+        
+        assemblyGenerator = AssemblyGenerator(code)
+        stringCode = "\n".join(assemblyGenerator.getCode())
+        print("\n\nCódigo ensamblador:\n", stringCode, sep="")
+        copyToClipboard(stringCode)
 
 if __name__ == '__main__':
     main()
