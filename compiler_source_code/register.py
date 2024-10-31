@@ -23,3 +23,6 @@ class Register:
   
   def __hash__(self):
     return hash((self.type, self.number))
+  
+  def __str__(self) -> str:
+    return f"${self.type.value}{self.number}"

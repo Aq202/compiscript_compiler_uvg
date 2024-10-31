@@ -5,7 +5,7 @@ from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType, F
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE
 from antlr4 import tree
 from Offset import Offset
 from ParamsTree import ParamsTree
@@ -1219,7 +1219,7 @@ class IntermediateCodeGenerator():
         # Crear un nuevo temporal con valor
         temp = self.newTemp(ctx.type)
         # Guardar asignación en CI
-        ctx.code.concat(SingleInstruction(result=temp, arg1=Value(lexeme, nodeType)))
+        ctx.code.concat(SingleInstruction(result=temp, arg1=Value(lexeme, nodeType), operator=STORE, operatorFirst=True))
         ctx.addr = temp
         
       elif isinstance(nodeType, NilType):
@@ -1231,7 +1231,7 @@ class IntermediateCodeGenerator():
         temp = self.newTemp(ctx.type)
         
         val = trueValue if lexeme == "true" else falseValue
-        ctx.code.concat(SingleInstruction(result=temp, arg1=val))
+        ctx.code.concat(SingleInstruction(result=temp, arg1=val, operator=STORE, operatorFirst=True))
         ctx.addr = temp
       
       elif isinstance(nodeType, (ObjectType, FunctionType,FunctionOverload, ClassType)):

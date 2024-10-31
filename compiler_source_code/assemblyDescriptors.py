@@ -6,12 +6,12 @@ class RegisterDescriptor:
     
     self._registers = dict()
     
-    for s in range(8):
+    for s in range(1,8):
       self._registers[Register(RegisterTypes.saved, s)] = set()      
-    for t in range(10):
+    for t in range(8): # Registros 8 y 9 son para operaciones internas del compilador
       self._registers[Register(RegisterTypes.temporary, t)] = set()
     
-    for f in range(31):
+    for f in range(29): # Registros 29 y 30 son para operaciones internas del compilador
       self._registers[Register(RegisterTypes.float, f)] = set()
   
   def getRegister(self, register):
