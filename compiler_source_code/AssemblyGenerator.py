@@ -1,7 +1,7 @@
 from assemblyDescriptors import RegisterDescriptor, AddressDescriptor
 from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary
 from compoundTypes import ObjectType
-from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, CONCATENATE
+from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PLUS, MINUS, MULTIPLY, DIVIDE, MOD
 from IntermediateCodeInstruction import SingleInstruction
 from primitiveTypes import FloatType, IntType
 from utils.decimalToIEEE754 import decimal_to_ieee754
@@ -132,10 +132,10 @@ class AssemblyGenerator:
         self.translateFloatPrint(instruction)
         return
       
-      elif instruction.operator in (PLUS, MINUS, MULTIPLY, DIVIDE):
-        self.translateArithmeticOperation(instruction)
+      elif instruction.operator in (PLUS, MINUS, MULTIPLY, DIVIDE, MOD):
+        self.translateModOperation(instruction)
         return
-    
+
     raise NotImplementedError("Instrucción no soportada.", str(instruction))
   
   def heapAllocate(self, size):
@@ -240,7 +240,7 @@ class AssemblyGenerator:
     self.assemblyCode.append("syscall")
     
   
-  def translateArithmeticOperation(self, instruction):
+  def translateModOperation(self, instruction):
       
       values = (instruction.arg1, instruction.arg2)
       destination = instruction.result
@@ -296,15 +296,29 @@ class AssemblyGenerator:
         MINUS: ("sub", "sub.s"),
         MULTIPLY: ("mul", "mul.s"),
         DIVIDE: ("div", "div.s"),
+        MOD: ("remu",)
       }
       
       # Realizar la operación
-      if floatOperation:
-        resultReg = self.getRegister(objectToSave=destination, useFloat=True, ignoreRegisters=addresses)
-        self.assemblyCode.append(f"{operationMap[operation][1]} {resultReg}, {addresses[0]}, {addresses[1]}")
-      else:
+      if not floatOperation:
         resultReg = self.getRegister(objectToSave=destination, ignoreRegisters=addresses)
         self.assemblyCode.append(f"{operationMap[operation][0]} {resultReg}, {addresses[0]}, {addresses[1]}")
+      elif operation != MOD:
+        resultReg = self.getRegister(objectToSave=destination, useFloat=True, ignoreRegisters=addresses)
+        self.assemblyCode.append(f"{operationMap[operation][1]} {resultReg}, {addresses[0]}, {addresses[1]}")
+      else: # MOD float 
+        modRegTemp = self.getRegister(objectToSave=None, useFloat=True, ignoreRegisters=addresses)
+        # División (float)
+        self.assemblyCode.append(f"div.s {modRegTemp}, {addresses[0]}, {addresses[1]}")
+        # Convertir cociente a entero (truncamiento)
+        self.assemblyCode.append(f"floor.w.s {modRegTemp}, {modRegTemp}")
+        # Convertir a float de nuevo
+        self.assemblyCode.append(f"cvt.s.w {modRegTemp}, {modRegTemp}")
+        # mult parte entera * divisor
+        self.assemblyCode.append(f"mul.s {modRegTemp}, {modRegTemp}, {addresses[1]}")
+        # calcular modulo (dividendo - parte entera * divisor)
+        resultReg = self.getRegister(objectToSave=destination, useFloat=True, ignoreRegisters=addresses)
+        self.assemblyCode.append(f"sub.s {resultReg}, {addresses[0]}, {modRegTemp}")
         
       # Actualizar descriptores
       self.registerDescriptor.replaceValueInRegister(resultReg, destination)
