@@ -1,7 +1,7 @@
 from assemblyDescriptors import RegisterDescriptor, AddressDescriptor
 from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary
 from compoundTypes import ObjectType
-from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PLUS
+from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, CONCATENATE
 from IntermediateCodeInstruction import SingleInstruction
 from primitiveTypes import FloatType, IntType
 from utils.decimalToIEEE754 import decimal_to_ieee754
@@ -132,8 +132,8 @@ class AssemblyGenerator:
         self.translateFloatPrint(instruction)
         return
       
-      elif instruction.operator == PLUS:
-        self.translateAddition(instruction)
+      elif instruction.operator in (PLUS, MINUS, MULTIPLY, DIVIDE):
+        self.translateArithmeticOperation(instruction)
         return
     
     raise NotImplementedError("Instrucción no soportada.", str(instruction))
@@ -240,16 +240,16 @@ class AssemblyGenerator:
     self.assemblyCode.append("syscall")
     
   
-  def translateAddition(self, instruction):
+  def translateArithmeticOperation(self, instruction):
       
       values = (instruction.arg1, instruction.arg2)
       destination = instruction.result
-      
+      operation = instruction.operator
       
       # Obtener ubicación más reciente
       addresses = [self.addressDescriptor.getAddress(values[0]), self.addressDescriptor.getAddress(values[1])]
       
-      floatOperation = values[0].strictEqualsType(FloatType) or values[1].strictEqualsType(FloatType)
+      floatOperation = operation == DIVIDE or values[0].strictEqualsType(FloatType) or values[1].strictEqualsType(FloatType)
       
       # Reservar ubicación en heap correspondiente al resultado
       size = floatSize if floatOperation else intSize
@@ -287,18 +287,24 @@ class AssemblyGenerator:
         for i in range(2):
           if not values[i].strictEqualsType(FloatType):
             
-            self.assemblyCode.append(f"mtc1 {addresses[i]} {floatCompilerTemporary[0]}")
-            self.assemblyCode.append(f"cvt.s.w {floatCompilerTemporary[0]}, {floatCompilerTemporary[0]}")
-            addresses[i] = floatCompilerTemporary[0]
-            break
-          
+            self.assemblyCode.append(f"mtc1 {addresses[i]} {floatCompilerTemporary[i]}")
+            self.assemblyCode.append(f"cvt.s.w {floatCompilerTemporary[i]}, {floatCompilerTemporary[i]}")
+            addresses[i] = floatCompilerTemporary[i]
+      
+      operationMap = {
+        PLUS: ("add", "add.s"),
+        MINUS: ("sub", "sub.s"),
+        MULTIPLY: ("mul", "mul.s"),
+        DIVIDE: ("div", "div.s"),
+      }
+      
       # Realizar la operación
       if floatOperation:
         resultReg = self.getRegister(objectToSave=destination, useFloat=True, ignoreRegisters=addresses)
-        self.assemblyCode.append(f"add.s {resultReg}, {addresses[0]}, {addresses[1]}")
+        self.assemblyCode.append(f"{operationMap[operation][1]} {resultReg}, {addresses[0]}, {addresses[1]}")
       else:
         resultReg = self.getRegister(objectToSave=destination, ignoreRegisters=addresses)
-        self.assemblyCode.append(f"add {resultReg}, {addresses[0]}, {addresses[1]}")
+        self.assemblyCode.append(f"{operationMap[operation][0]} {resultReg}, {addresses[0]}, {addresses[1]}")
         
       # Actualizar descriptores
       self.registerDescriptor.replaceValueInRegister(resultReg, destination)
