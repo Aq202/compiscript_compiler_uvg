@@ -35,6 +35,10 @@ class Register:
       return f"{self.type.value}"
     return f"${self.type.value}{self.number}"
   
+  def __repr__(self) -> str:
+    if self.number == None:
+      return f"{self.type.value}"
+    return f"${self.type.value}{self.number}"
   
 zero = Register(RegisterTypes.zero, None)
 valueReturn = tuple(Register(RegisterTypes.valueReturn, i) for i in range(2))

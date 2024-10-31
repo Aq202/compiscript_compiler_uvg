@@ -23,6 +23,13 @@ class RegisterDescriptor:
     
     self._registers[register].add(value)
     
+  def replaceValueInRegister(self, register, value):
+      
+      if register not in self._registers:
+        raise Exception(f"El registro {register} no existe.")
+      
+      self._registers[register] = {value}
+    
   def removeValueFromRegister(self, register, value):
     
     if register not in self._registers:
@@ -67,11 +74,11 @@ class AddressDescriptor:
       
       self._addresses[object].append(address)
 
+  def replaceAddress(self, object, address):
+      self._addresses[object] = [address]
+      
   def removeAddress(self, object, address):
-    
-    if object not in self._addresses:
-      raise Exception(f"La dirección de memoria {address} no está asignada a ningún objeto.")
-    
+        
     self._addresses[object].remove(address)
     
     if len(self._addresses[object]) == 0:
@@ -80,7 +87,7 @@ class AddressDescriptor:
   def getAddress(self, object):
     
     if object not in self._addresses or len(self._addresses[object]) == 0:
-      return []
+      return None
     
     addresses = self._addresses[object]
     return addresses[0]

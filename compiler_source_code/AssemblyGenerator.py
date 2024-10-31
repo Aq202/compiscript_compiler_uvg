@@ -1,7 +1,7 @@
 from assemblyDescriptors import RegisterDescriptor, AddressDescriptor
-from register import RegisterTypes, Register, compilerTemporary as compTempReg, floatCompilerTemporary
+from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary
 from compoundTypes import ObjectType
-from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT
+from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PLUS
 from IntermediateCodeInstruction import SingleInstruction
 from primitiveTypes import FloatType, IntType
 from utils.decimalToIEEE754 import decimal_to_ieee754
@@ -29,7 +29,7 @@ class AssemblyGenerator:
   def getCode(self):
     return self.assemblyCode
   
-  def getRegister(self, objectToSave=None, useTemp=False, useFloat=False, useFloatTemp=False):
+  def getRegister(self, objectToSave=None, useTemp=False, useFloat=False, useFloatTemp=False, ignoreRegisters=[]):
     """
     Obtiene un registro disponible o adecuado para guardar el objeto.
     @param objectToSave: El objeto que se quiere guardar en un registro.
@@ -41,7 +41,7 @@ class AssemblyGenerator:
     
     # Si el objeto a guardar ya está en un registro, retornarlo
     prevAddr = self.addressDescriptor.getAddress(objectToSave)
-    if len(prevAddr) > 0 and isinstance(prevAddr[0], Register):
+    if isinstance(prevAddr, Register):
       return prevAddr[0]
     
     freeRegisters = list(self.registerDescriptor.getFreeRegisters())
@@ -49,7 +49,7 @@ class AssemblyGenerator:
     # Filtrar registros que no se pueden usar
     registerType = RegisterTypes.floatTemporary if useFloatTemp else \
       RegisterTypes.floatSaved if useFloat else RegisterTypes.temporary if useTemp else RegisterTypes.saved
-    freeRegisters = [r for r in freeRegisters if r.type == registerType]
+    freeRegisters = [r for r in freeRegisters if r.type == registerType and r not in ignoreRegisters]
     
     if len(freeRegisters) > 0:
       return freeRegisters[0]
@@ -59,7 +59,7 @@ class AssemblyGenerator:
     minRegister = None
     minCount = float("inf")
     for register in registers:
-      if len(registers[register]) < minCount:
+      if len(registers[register]) < minCount and register not in ignoreRegisters:
         minCount = len(registers[register])
         minRegister = register
     
@@ -71,8 +71,8 @@ class AssemblyGenerator:
       objectOffset = object.offset
       
       # Obtener dirección de memoria para guardar el valor (en el heap)
-      self.assemblyCode.append(f"lw {compTempReg[0]}, {objectOffset}({objectBasePointer})")
-      self.assemblyCode.append(f"sw {minRegister}, 0({compTempReg[0]})")
+      self.assemblyCode.append(f"lw {compilerTemporary[0]}, {objectOffset}({objectBasePointer})")
+      self.assemblyCode.append(f"sw {minRegister}, 0({compilerTemporary[0]})")
       
       # Actualizar descriptores
       self.registerDescriptor.removeValueFromRegister(register=minRegister, value=object)
@@ -87,7 +87,7 @@ class AssemblyGenerator:
     self.assemblyCode.append(".text")
     self.assemblyCode.append(".globl main")
     self.assemblyCode.append("main:")
-    self.assemblyCode.append("li $gp, 0x10000000") # cargar dirección de gp
+    self.assemblyCode.append("li $gp, 0x10010000") # cargar dirección de gp
     
   def generateProgramExitCode(self):
     
@@ -117,7 +117,6 @@ class AssemblyGenerator:
   
   def translateInstruction(self, instruction):
     
-    print(type(instruction), instruction.operator)
     if isinstance(instruction, SingleInstruction):
       
       if instruction.operator == STORE:
@@ -131,6 +130,10 @@ class AssemblyGenerator:
       
       elif instruction.operator == PRINT_FLOAT:
         self.translateFloatPrint(instruction)
+        return
+      
+      elif instruction.operator == PLUS:
+        self.translateAddition(instruction)
         return
     
     raise NotImplementedError("Instrucción no soportada.", str(instruction))
@@ -155,16 +158,15 @@ class AssemblyGenerator:
       # Asignación de número
       memoryAddressReg = self.heapAllocate(intSize)
       
-      # Guardar el valor en memoria
-      self.assemblyCode.append(f"li {compTempReg[0]}, {value}")
-      self.assemblyCode.append(f"sw {compTempReg[0]}, 0({memoryAddressReg})")
+      # Guardar en memoria estática la dirección del valor en el heap
+      self.assemblyCode.append(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
       
       # Guardar en registro el valor final
       register = self.getRegister(objectToSave=destination)
-      self.assemblyCode.append(f"move {register}, {compTempReg[0]}")
+      self.assemblyCode.append(f"li {register}, {value}")
 
       # Guardar en descriptores que la variable está en el registro
-      self.registerDescriptor.saveValueInRegister(register, destination)
+      self.registerDescriptor.replaceValueInRegister(register, destination)
       self.addressDescriptor.insertAddress(destination, register)
     
     elif isinstance(valueType, FloatType):
@@ -172,15 +174,19 @@ class AssemblyGenerator:
       memoryAddressReg = self.heapAllocate(floatSize)
       
       # Guardar el valor en memoria
-      self.assemblyCode.append(f"li {compTempReg[0]}, {decimal_to_ieee754(value)}")
-      self.assemblyCode.append(f"sw {compTempReg[0]}, 0({memoryAddressReg})")
+      self.assemblyCode.append(f"li {compilerTemporary[0]}, {decimal_to_ieee754(value)}")
+      self.assemblyCode.append(f"sw {compilerTemporary[0]}, 0({memoryAddressReg})")
       
       register = self.getRegister(objectToSave=destination, useFloat=True)
       self.assemblyCode.append(f"l.s {register}, 0({memoryAddressReg})")
       
-      # Guardar en descriptores que la variable está en el registro
-      self.registerDescriptor.saveValueInRegister(register, destination)
+      # Guardar en memoria estática la dirección del valor en el heap
+      self.assemblyCode.append(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
+      
+      # Guardar en descriptores que la variable está en el registro y en memoria
+      self.registerDescriptor.replaceValueInRegister(register, destination)
       self.addressDescriptor.insertAddress(destination, register)
+      self.addressDescriptor.insertAddress(destination, destination)
       
       
       
@@ -198,8 +204,8 @@ class AssemblyGenerator:
     
     else:
       # Obtener dirección del heap y luego obtener el valor guardado
-      self.assemblyCode.append(f"lw {compTempReg[0]}, 0({self.getBasePointer(address)})")
-      self.assemblyCode.append(f"lw $a0, 0({compTempReg[0]})")
+      self.assemblyCode.append(f"lw {compilerTemporary[0]}, 0({self.getBasePointer(address)})")
+      self.assemblyCode.append(f"lw $a0, 0({compilerTemporary[0]})")
         
     self.assemblyCode.append(f"li $v0, 1")
     self.assemblyCode.append("syscall")
@@ -222,8 +228,8 @@ class AssemblyGenerator:
     
     else:
       # Obtener dirección del heap y luego obtener el valor guardado
-      self.assemblyCode.append(f"lw {compTempReg[0]}, 0({address})")
-      self.assemblyCode.append(f"l.s $f12, 0({compTempReg[0]})")
+      self.assemblyCode.append(f"lw {compilerTemporary[0]}, 0({address})")
+      self.assemblyCode.append(f"l.s $f12, 0({compilerTemporary[0]})")
         
     self.assemblyCode.append(f"li $v0, 2")
     self.assemblyCode.append("syscall")
@@ -232,3 +238,68 @@ class AssemblyGenerator:
     self.assemblyCode.append("li $v0, 11")
     self.assemblyCode.append("li $a0, 10")
     self.assemblyCode.append("syscall")
+    
+  
+  def translateAddition(self, instruction):
+      
+      values = (instruction.arg1, instruction.arg2)
+      destination = instruction.result
+      
+      
+      # Obtener ubicación más reciente
+      addresses = [self.addressDescriptor.getAddress(values[0]), self.addressDescriptor.getAddress(values[1])]
+      
+      floatOperation = values[0].strictEqualsType(FloatType) or values[1].strictEqualsType(FloatType)
+      
+      # Reservar ubicación en heap correspondiente al resultado
+      size = floatSize if floatOperation else intSize
+      memoryAddressReg = self.heapAllocate(size)
+      # Guardar en memoria estática la dirección del valor en el heap
+      self.assemblyCode.append(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
+      
+      
+      # Cargar valores en registros
+      for i in range(2):
+        if not isinstance(addresses[i], Register):
+          # El valor no está en un registro, cargar de memoria
+          if values[i].strictEqualsType(FloatType):
+            addresses[i] = self.getRegister(objectToSave=values[i], useFloat=True, ignoreRegisters=addresses)
+            
+            # Cargar dirrección de memoria del valor en el heap
+            self.assemblyCode.append(f"lw {compilerTemporary[0]}, {values[i].offset}({self.getBasePointer(values[i])})")
+            # Cargar valor final
+            self.assemblyCode.append(f"l.s {addresses[i]}, 0({compilerTemporary[0]})")
+
+          else:
+            addresses[i] = self.getRegister(objectToSave=values[i], ignoreRegisters=addresses)
+            # Cargar dirrección de memoria del valor en el heap
+            self.assemblyCode.append(f"lw {compilerTemporary[0]}, {values[i].offset}({self.getBasePointer(values[i])})")
+            # Cargar valor final
+            self.assemblyCode.append(f"lw {addresses[i]}, 0({compilerTemporary[0]})")
+          
+          # Actualizar descriptores
+          self.addressDescriptor.insertAddress(values[i], addresses[i])
+          self.registerDescriptor.replaceValueInRegister(addresses[i], values[i])
+      
+      # Realizar conversión de tipos si es necesario
+      if floatOperation:
+        
+        for i in range(2):
+          if not values[i].strictEqualsType(FloatType):
+            
+            self.assemblyCode.append(f"mtc1 {addresses[i]} {floatCompilerTemporary[0]}")
+            self.assemblyCode.append(f"cvt.s.w {floatCompilerTemporary[0]}, {floatCompilerTemporary[0]}")
+            addresses[i] = floatCompilerTemporary[0]
+            break
+          
+      # Realizar la operación
+      if floatOperation:
+        resultReg = self.getRegister(objectToSave=destination, useFloat=True, ignoreRegisters=addresses)
+        self.assemblyCode.append(f"add.s {resultReg}, {addresses[0]}, {addresses[1]}")
+      else:
+        resultReg = self.getRegister(objectToSave=destination, ignoreRegisters=addresses)
+        self.assemblyCode.append(f"add {resultReg}, {addresses[0]}, {addresses[1]}")
+        
+      # Actualizar descriptores
+      self.registerDescriptor.replaceValueInRegister(resultReg, destination)
+      self.addressDescriptor.replaceAddress(destination, resultReg)
