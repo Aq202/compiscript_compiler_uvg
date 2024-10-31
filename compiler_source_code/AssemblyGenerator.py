@@ -1,9 +1,11 @@
 from assemblyDescriptors import RegisterDescriptor, AddressDescriptor
-from register import RegisterTypes, Register
+from register import RegisterTypes, Register, compilerTemporary as compTempReg, floatCompilerTemporary
 from compoundTypes import ObjectType
-from IntermediateCodeTokens import STATIC_POINTER, STORE
+from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT
 from IntermediateCodeInstruction import SingleInstruction
-from primitiveTypes import NumberType, IntType
+from primitiveTypes import FloatType, IntType
+from utils.decimalToIEEE754 import decimal_to_ieee754
+
 
 intSize = 4
 floatSize = 4
@@ -27,19 +29,26 @@ class AssemblyGenerator:
   def getCode(self):
     return self.assemblyCode
   
-  def getRegister(self, objectToSave=None, useTemp=False, useFloat=False):
+  def getRegister(self, objectToSave=None, useTemp=False, useFloat=False, useFloatTemp=False):
+    """
+    Obtiene un registro disponible o adecuado para guardar el objeto.
+    @param objectToSave: El objeto que se quiere guardar en un registro.
+    @param useTemp: Si se debe buscar un registro temporal $t0 - t7.
+    @param useFloat: Si se debe buscar un registro flotante $f0 - f29.
+    
+    @return: El registro disponible o adecuado para guardar el objeto.
+    """
     
     # Si el objeto a guardar ya está en un registro, retornarlo
     prevAddr = self.addressDescriptor.getAddress(objectToSave)
     if len(prevAddr) > 0 and isinstance(prevAddr[0], Register):
       return prevAddr[0]
     
-    
-    
     freeRegisters = list(self.registerDescriptor.getFreeRegisters())
     
     # Filtrar registros que no se pueden usar
-    registerType = RegisterTypes.float if useFloat else RegisterTypes.temporary if useTemp else RegisterTypes.saved
+    registerType = RegisterTypes.floatTemporary if useFloatTemp else \
+      RegisterTypes.floatSaved if useFloat else RegisterTypes.temporary if useTemp else RegisterTypes.saved
     freeRegisters = [r for r in freeRegisters if r.type == registerType]
     
     if len(freeRegisters) > 0:
@@ -60,7 +69,10 @@ class AssemblyGenerator:
       # Guardar valor de registro en memoria
       objectBasePointer = self.getBasePointer(object)
       objectOffset = object.offset
-      self.assemblyCode.append(f"sw {minRegister}, {objectOffset}({objectBasePointer})")
+      
+      # Obtener dirección de memoria para guardar el valor (en el heap)
+      self.assemblyCode.append(f"lw {compTempReg[0]}, {objectOffset}({objectBasePointer})")
+      self.assemblyCode.append(f"sw {minRegister}, 0({compTempReg[0]})")
       
       # Actualizar descriptores
       self.registerDescriptor.removeValueFromRegister(register=minRegister, value=object)
@@ -73,8 +85,8 @@ class AssemblyGenerator:
   def generateInitCode(self):
     
     self.assemblyCode.append(".text")
-    self.assemblyCode.append(".global main")
-    self.assemblyCode.append(".main:")
+    self.assemblyCode.append(".globl main")
+    self.assemblyCode.append("main:")
     self.assemblyCode.append("li $gp, 0x10000000") # cargar dirección de gp
     
   def generateProgramExitCode(self):
@@ -112,6 +124,14 @@ class AssemblyGenerator:
         # Asignación
         self.translateValueStore(instruction)
         return
+      
+      elif instruction.operator == PRINT_INT:
+        self.translateIntPrint(instruction)
+        return
+      
+      elif instruction.operator == PRINT_FLOAT:
+        self.translateFloatPrint(instruction)
+        return
     
     raise NotImplementedError("Instrucción no soportada.", str(instruction))
   
@@ -130,21 +150,85 @@ class AssemblyGenerator:
     destination = instruction.result
     value = instruction.arg1.value
     valueType = instruction.arg1.type
-    
-    destBasePointer = self.getBasePointer(destination)
-    
+        
     if isinstance(valueType, IntType):
       # Asignación de número
       memoryAddressReg = self.heapAllocate(intSize)
       
       # Guardar el valor en memoria
-      self.assemblyCode.append(f"li $t8, {value}")
-      self.assemblyCode.append(f"sw $t8, 0({memoryAddressReg})")
+      self.assemblyCode.append(f"li {compTempReg[0]}, {value}")
+      self.assemblyCode.append(f"sw {compTempReg[0]}, 0({memoryAddressReg})")
       
-      
+      # Guardar en registro el valor final
       register = self.getRegister(objectToSave=destination)
-      self.assemblyCode.append(f"move {register}, {memoryAddressReg}")
+      self.assemblyCode.append(f"move {register}, {compTempReg[0]}")
+
+      # Guardar en descriptores que la variable está en el registro
+      self.registerDescriptor.saveValueInRegister(register, destination)
+      self.addressDescriptor.insertAddress(destination, register)
+    
+    elif isinstance(valueType, FloatType):
+      # Asignación de número
+      memoryAddressReg = self.heapAllocate(floatSize)
+      
+      # Guardar el valor en memoria
+      self.assemblyCode.append(f"li {compTempReg[0]}, {decimal_to_ieee754(value)}")
+      self.assemblyCode.append(f"sw {compTempReg[0]}, 0({memoryAddressReg})")
+      
+      register = self.getRegister(objectToSave=destination, useFloat=True)
+      self.assemblyCode.append(f"l.s {register}, 0({memoryAddressReg})")
       
       # Guardar en descriptores que la variable está en el registro
       self.registerDescriptor.saveValueInRegister(register, destination)
       self.addressDescriptor.insertAddress(destination, register)
+      
+      
+      
+      
+  def translateIntPrint(self, instruction):
+    
+    value = instruction.arg1
+    
+    # Obtener ubicación más reciente    
+    address = self.addressDescriptor.getAddress(value)
+    
+    if isinstance(address, Register):
+      # El valor está en un registro
+      self.assemblyCode.append(f"move $a0, {address}")
+    
+    else:
+      # Obtener dirección del heap y luego obtener el valor guardado
+      self.assemblyCode.append(f"lw {compTempReg[0]}, 0({self.getBasePointer(address)})")
+      self.assemblyCode.append(f"lw $a0, 0({compTempReg[0]})")
+        
+    self.assemblyCode.append(f"li $v0, 1")
+    self.assemblyCode.append("syscall")
+    
+    # Imprimir salto de línea
+    self.assemblyCode.append("li $v0, 11")
+    self.assemblyCode.append("li $a0, 10")
+    self.assemblyCode.append("syscall")
+    
+  def translateFloatPrint(self, instruction):
+    
+    value = instruction.arg1
+    
+    # Obtener ubicación más reciente    
+    address = self.addressDescriptor.getAddress(value)
+    
+    if isinstance(address, Register):
+      # El valor está en un registro
+      self.assemblyCode.append(f"mov.s $f12, {address}")
+    
+    else:
+      # Obtener dirección del heap y luego obtener el valor guardado
+      self.assemblyCode.append(f"lw {compTempReg[0]}, 0({address})")
+      self.assemblyCode.append(f"l.s $f12, 0({compTempReg[0]})")
+        
+    self.assemblyCode.append(f"li $v0, 2")
+    self.assemblyCode.append("syscall")
+    
+    # Imprimir salto de línea
+    self.assemblyCode.append("li $v0, 11")
+    self.assemblyCode.append("li $a0, 10")
+    self.assemblyCode.append("syscall")

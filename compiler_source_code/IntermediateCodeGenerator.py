@@ -5,7 +5,7 @@ from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType, F
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT_STR, PRINT_INT, PRINT_FLOAT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE
 from antlr4 import tree
 from Offset import Offset
 from ParamsTree import ParamsTree
@@ -308,7 +308,13 @@ class IntermediateCodeGenerator():
     if not self.continueCodeGeneration(): return
     ctx.code = self.getChildrenCode(ctx)
     
-    ctx.code.concat(SingleInstruction(operator=PRINT, arg1=ctx.expression().addr))
+    child = ctx.getChild(1)
+    if child.type.equalsType(IntType):
+      ctx.code.concat(SingleInstruction(operator=PRINT_INT, arg1=ctx.expression().addr))
+    elif child.type.equalsType(FloatType):
+      ctx.code.concat(SingleInstruction(operator=PRINT_FLOAT, arg1=ctx.expression().addr))
+    else:
+      ctx.code.concat(SingleInstruction(operator=PRINT_STR, arg1=ctx.expression().addr))
 
   def enterReturnStmt(self, ctx: CompiscriptParser.ReturnStmtContext):
     if not self.continueCodeGeneration(): return
@@ -489,7 +495,7 @@ class IntermediateCodeGenerator():
     if not self.continueCodeGeneration(): return
     
     printMessage = ctx.getChild(1).getText()
-    code = SingleInstruction(operator=PRINT, arg1=printMessage)
+    code = SingleInstruction(operator=PRINT_STR, arg1=printMessage)
     
     temp = self.newTemp(FloatType())
     code.concat(SingleInstruction(operator=INPUT_FLOAT, result=temp))
@@ -503,7 +509,7 @@ class IntermediateCodeGenerator():
     if not self.continueCodeGeneration(): return
     
     printMessage = ctx.getChild(1).getText()
-    code = SingleInstruction(operator=PRINT, arg1=printMessage)
+    code = SingleInstruction(operator=PRINT_STR, arg1=printMessage)
     
     temp = self.newTemp(IntType())
     code.concat(SingleInstruction(operator=INPUT_INT, result=temp))
@@ -517,7 +523,7 @@ class IntermediateCodeGenerator():
     if not self.continueCodeGeneration(): return
     
     printMessage = ctx.getChild(1).getText()
-    code = SingleInstruction(operator=PRINT, arg1=printMessage)
+    code = SingleInstruction(operator=PRINT_STR, arg1=printMessage)
     
     temp = self.newTemp(StringType())
     
