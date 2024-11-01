@@ -338,7 +338,7 @@ class ObjectType:
   Clase que empaqueta entidades como variables u objetos.
   """
 
-  def __init__(self, name, type, reference = None):
+  def __init__(self, name, type, scope, reference = None):
     """
     name: id del objeto
     type: tipo del objeto (debe ser la clase del objeto, ya sea primitivo o uno compuesto)
@@ -347,11 +347,17 @@ class ObjectType:
     """
     self.name = name
     self.type = type
+    self.scope = scope
     self.reference = reference
     self.offset = None
     self.size = None
     self.baseType = None
 
+  def copy(self):
+    obj = ObjectType(self.name, self.type, self.scope, self.reference)
+    obj.assignOffset(self.offset, self.size, self.baseType)
+    return obj
+  
   def getType(self):
     """
     Devuelve el tipo guardado en la variable.
@@ -381,6 +387,16 @@ class ObjectType:
     self.size = size
     self.baseType = baseType
 
+  def __eq__(self, value: object) -> bool:
+    """
+    Sobreescribir el operador de igualdad para comparar si dos objetos son iguales.
+    Se considera que dos objetos son iguales si tienen el mismo nombre y scope.
+    """
+    return isinstance(value, ObjectType) and self.name == value.name and self.scope == value.scope
+  
+  def __hash__(self):
+    return hash((self.name, self.scope))
+  
   def __repr__(self):
     reference = self.reference if self.reference != self else "ObjectType(SELF)"
     repr = [f"name={self.name}"]

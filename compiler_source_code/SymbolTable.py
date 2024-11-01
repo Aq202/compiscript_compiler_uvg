@@ -93,12 +93,12 @@ class Scope:
     self.elements[name] = classObj
 
   def addObject(self, name, type):
-    object = ObjectType(name, type)
+    object = ObjectType(name, type, self)
     self.elements[name] = object
     return object
     
   def addTemporary(self, name, type = AnyType()):
-    temp = ObjectType(name, type)
+    temp = ObjectType(name, type, self)
     self.temporaries[name] = temp
     return temp
 

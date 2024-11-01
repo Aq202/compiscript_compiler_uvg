@@ -134,15 +134,17 @@ class IntermediateCodeGenerator():
     
     scope.setOffset(scope.getOffset() + MEM_ADDR_SIZE) # Correr offset para siguiente variable
     
+    objectDefCopy = objectDef.copy() # Copia de ObjectType() para preservar el tipo
+    
     if expressionNode is None:
       # Asignar NIL
-      ctx.code.concat(SingleInstruction(result=objectDef, arg1=Value(None, NilType()), operator=ASSIGN))
+      ctx.code.concat(SingleInstruction(result=objectDefCopy, arg1=Value(None, NilType()), operator=ASSIGN))
     
     else:
       expressionAddr = expressionNode.addr
-      ctx.code.concat(SingleInstruction(result=objectDef, arg1=expressionAddr, operator=ASSIGN))
+      ctx.code.concat(SingleInstruction(result=objectDefCopy, arg1=expressionAddr, operator=ASSIGN))
     
-    ctx.addr = objectDef
+    ctx.addr = objectDefCopy
       
 
 
@@ -564,7 +566,8 @@ class IntermediateCodeGenerator():
     
     if objectDef is not None:
       # Si es una asignación a una variable
-      ctx.code.concat(SingleInstruction(result=objectDef, arg1=valueAddr, operator=ASSIGN))
+      objectDefCopy = objectDef.copy() # Copia de ObjectType() para preservar el tipo
+      ctx.code.concat(SingleInstruction(result=objectDefCopy, arg1=valueAddr, operator=ASSIGN))
       
     elif not valueType.strictEqualsType(FunctionType): # Ignorar métodos (no se pueden asignar)
       
@@ -1240,8 +1243,14 @@ class IntermediateCodeGenerator():
         ctx.code.concat(SingleInstruction(result=temp, arg1=val, operator=STORE, operatorFirst=True))
         ctx.addr = temp
       
-      elif isinstance(nodeType, (ObjectType, FunctionType,FunctionOverload, ClassType)):
+      elif isinstance(nodeType, (FunctionType,FunctionOverload, ClassType)):
         ctx.addr = nodeType
+        
+      elif isinstance(nodeType, ObjectType):
+        # Realizar una copia de objeto (variable) para evitar que se sobreescriba el tipo.
+        ctx.addr = nodeType.copy()
+        
+        print(ctx.addr, "copied")
         
       elif lexeme == "this":
         
