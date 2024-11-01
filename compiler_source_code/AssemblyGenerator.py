@@ -1,7 +1,7 @@
 from assemblyDescriptors import RegisterDescriptor, AddressDescriptor
 from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary
 from compoundTypes import ObjectType
-from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN
+from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG
 from IntermediateCodeInstruction import SingleInstruction
 from primitiveTypes import FloatType, IntType
 from utils.decimalToIEEE754 import decimal_to_ieee754
@@ -170,6 +170,10 @@ class AssemblyGenerator:
       
       elif instruction.operator == ASSIGN:
         self.translateAssignmentInstruction(instruction)
+        return
+      
+      elif instruction.operator == NEG:
+        self.translateNegativeOperation(instruction)
         return
       
 
@@ -341,4 +345,30 @@ class AssemblyGenerator:
     self.addressDescriptor.replaceAddress(object=result, address=address)
     self.registerDescriptor.saveValueInRegister(register=address, value=result)
     
+  def translateNegativeOperation(self, instruction):
     
+    value = instruction.arg1
+    destination = instruction.result
+    
+    # Obtener ubicación más reciente
+    address = self.getValueInRegister(value)
+    
+    floatOperation = value.strictEqualsType(FloatType)
+    
+    # Reservar ubicación en heap correspondiente al resultado
+    size = floatSize if floatOperation else intSize
+    memoryAddressReg = self.heapAllocate(size)
+    # Guardar en memoria estática la dirección del valor en el heap
+    self.assemblyCode.append(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
+    
+    # Realizar la operación
+    if floatOperation:
+      resultReg = self.getRegister(objectToSave=destination, useFloat=True, ignoreRegisters=[address])
+      self.assemblyCode.append(f"neg.s {resultReg}, {address}")
+    else:
+      resultReg = self.getRegister(objectToSave=destination, ignoreRegisters=[address])
+      self.assemblyCode.append(f"neg {resultReg}, {address}")
+    
+    # Actualizar descriptores
+    self.registerDescriptor.replaceValueInRegister(register=resultReg, value=destination)
+    self.addressDescriptor.replaceAddress(object=destination, address=resultReg)
