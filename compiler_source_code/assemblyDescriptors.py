@@ -1,4 +1,5 @@
 from register import Register, RegisterTypes, temporary, saved, floatTemporary, floatSaved
+from compoundTypes import ObjectType
 
 class RegisterDescriptor:
 
@@ -54,6 +55,13 @@ class RegisterDescriptor:
         registers[register] = self._registers[register]
     return registers
 
+  def __str__(self) -> str:
+    res = "\nRegister Descriptor:\n"
+    for register in self._registers:
+      if len(self._registers[register]) > 0:
+        res += f"{register}: {self._registers[register]}\n"
+        
+    return res
 
 class AddressDescriptor:
   
@@ -61,16 +69,38 @@ class AddressDescriptor:
     
     self._addresses = dict()
     
+  def _hasRegister(self, object):
+    """
+    Verficar si una dirección ya tiene asignado un registro.
+    """
+    return any(isinstance(address, Register) for address in self._addresses.get(object, []))
+  
+  def _hasObjectType(self, object):
+    """
+    Verificar si una dirección ya tiene asignada una dirección de memoria (ObjectType)
+    """
+    return any(isinstance(address, ObjectType) for address in self._addresses.get(object, []))
+    
+    
   def insertAddress(self, object, address):
     
     if object not in self._addresses:
       self._addresses[object] = [address]
+    
     elif address not in self._addresses[object]:
       
       if isinstance(address, Register):
+        # Validar que no tenga un registro asignado
+        if self._hasRegister(object):
+          raise Exception(f"La dirección {object} ya tiene asignado un registro.")
+        
         # Si es un registro añadir al inicio
         self._addresses[object].insert(0, address)
         return
+      
+      # Verificar que no tenga una dirección de memoria asignada (objectType)
+      if self._hasObjectType(object):
+        raise Exception(f"La dirección {object} ya tiene asignada una dirección de memoria.")
       
       self._addresses[object].append(address)
 
@@ -91,4 +121,9 @@ class AddressDescriptor:
     
     addresses = self._addresses[object]
     return addresses[0]
-    
+  
+  def __str__(self) -> str:
+    return "\nAddress Descriptor:\n" +  str(self._addresses)
+  
+  def __repr__(self) -> str:
+    return "\nAddress Descriptor:\n" +  str(self._addresses)

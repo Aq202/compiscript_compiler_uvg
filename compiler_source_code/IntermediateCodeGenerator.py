@@ -5,7 +5,7 @@ from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType, F
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT_STR, PRINT_INT, PRINT_FLOAT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT_STR, PRINT_INT, PRINT_FLOAT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE, ASSIGN
 from antlr4 import tree
 from Offset import Offset
 from ParamsTree import ParamsTree
@@ -136,11 +136,11 @@ class IntermediateCodeGenerator():
     
     if expressionNode is None:
       # Asignar NIL
-      ctx.code.concat(SingleInstruction(result=objectDef, arg1=Value(None, NilType())))
+      ctx.code.concat(SingleInstruction(result=objectDef, arg1=Value(None, NilType()), operator=ASSIGN))
     
     else:
       expressionAddr = expressionNode.addr
-      ctx.code.concat(SingleInstruction(result=objectDef, arg1=expressionAddr))
+      ctx.code.concat(SingleInstruction(result=objectDef, arg1=expressionAddr, operator=ASSIGN))
     
     ctx.addr = objectDef
       
@@ -564,7 +564,7 @@ class IntermediateCodeGenerator():
     
     if objectDef is not None:
       # Si es una asignación a una variable
-      ctx.code.concat(SingleInstruction(result=objectDef, arg1=valueAddr))
+      ctx.code.concat(SingleInstruction(result=objectDef, arg1=valueAddr, operator=ASSIGN))
       
     elif not valueType.strictEqualsType(FunctionType): # Ignorar métodos (no se pueden asignar)
       
@@ -583,7 +583,7 @@ class IntermediateCodeGenerator():
         propertyPosition = Offset(thisTemp, propertyIndex * MEM_ADDR_SIZE)
         
         # Asignar valor a propiedad en CI
-        ctx.code.concat(SingleInstruction(result=propertyPosition, arg1=valueAddr))
+        ctx.code.concat(SingleInstruction(result=propertyPosition, arg1=valueAddr, operator=ASSIGN))
         
       else:
         
@@ -596,7 +596,7 @@ class IntermediateCodeGenerator():
         propertyPosition = Offset(instanceAddr, propertyIndex * MEM_ADDR_SIZE)
         
         # Asignar valor a propiedad en CI
-        ctx.code.concat(SingleInstruction(result=propertyPosition, arg1=valueAddr))
+        ctx.code.concat(SingleInstruction(result=propertyPosition, arg1=valueAddr, operator=ASSIGN))
       
 
 

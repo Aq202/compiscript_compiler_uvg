@@ -1,11 +1,11 @@
 from assemblyDescriptors import RegisterDescriptor, AddressDescriptor
 from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary
 from compoundTypes import ObjectType
-from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PLUS, MINUS, MULTIPLY, DIVIDE, MOD
+from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN
 from IntermediateCodeInstruction import SingleInstruction
 from primitiveTypes import FloatType, IntType
 from utils.decimalToIEEE754 import decimal_to_ieee754
-
+from utils.consoleColors import yellow_text
 
 intSize = 4
 floatSize = 4
@@ -21,8 +21,10 @@ class AssemblyGenerator:
     
     self.generateInitCode()
     
+    print("\n\n Iniciando traducción...\n\n")
     for instruction in code:
       self.translateInstruction(instruction)
+      print(yellow_text(instruction), "\n", self.registerDescriptor, self.addressDescriptor, "\n")
     
     self.generateProgramExitCode()
   
@@ -135,6 +137,11 @@ class AssemblyGenerator:
       elif instruction.operator in (PLUS, MINUS, MULTIPLY, DIVIDE, MOD):
         self.translateModOperation(instruction)
         return
+      
+      elif instruction.operator == ASSIGN:
+        self.translateAssignmentInstruction(instruction)
+        return
+      
 
     raise NotImplementedError("Instrucción no soportada.", str(instruction))
   
@@ -323,3 +330,39 @@ class AssemblyGenerator:
       # Actualizar descriptores
       self.registerDescriptor.replaceValueInRegister(resultReg, destination)
       self.addressDescriptor.replaceAddress(destination, resultReg)
+      
+      
+  def translateAssignmentInstruction(self, instruction):
+    
+    value = instruction.arg1
+    result = instruction.result
+    
+    # Obtener ubicación más reciente
+    address = self.addressDescriptor.getAddress(value)
+    
+    if not isinstance(address, Register):
+      
+      # El valor no está en un registro, cargar de memoria
+      if value.strictEqualsType(FloatType):
+        address = self.getRegister(objectToSave=value, useFloat=True) # Obtener registro flotante
+        # Cargar dirrección del bloque de memoria en el heap
+        self.assemblyCode.append(f"lw {compilerTemporary[0]}, {value.offset}({self.getBasePointer(value)})")
+        # Cargar valor final
+        self.assemblyCode.append(f"l.s {address}, 0({compilerTemporary[0]})")
+        
+      else:
+        address = self.getRegister(objectToSave=value) # Obtener registro entero
+        # Cargar dirrección del bloque de memoria en el heap
+        self.assemblyCode.append(f"lw {compilerTemporary[0]}, {value.offset}({self.getBasePointer(value)})")
+        # Cargar valor final
+        self.assemblyCode.append(f"lw {address}, 0({compilerTemporary[0]})")
+        
+      # Actualizar descriptores con el valor recién cargado
+      self.addressDescriptor.insertAddress(value, address)
+      self.registerDescriptor.saveValueInRegister(address, value)
+      
+    # Actualizar en descriptores que result = value
+    self.addressDescriptor.replaceAddress(object=result, address=address)
+    self.registerDescriptor.saveValueInRegister(register=address, value=result)
+    
+    
