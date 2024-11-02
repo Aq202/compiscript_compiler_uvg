@@ -833,10 +833,13 @@ class IntermediateCodeGenerator():
       else:
         raise NotImplementedError("exitTerm: Operador no implementado")
       
-      if firstOperand.strictEqualsType(StringType) or secondOperand.strictEqualsType(StringType):
+      firstOpType = firstOperand.getType()
+      secondOpType = secondOperand.getType()
+      
+      if firstOpType.strictEqualsType(StringType) or secondOpType.strictEqualsType(StringType):
         # Si alguno de los operandos es string, concatenar
         tempType = StringType()
-      elif firstOperand.strictEqualsType(IntType) and secondOperand.strictEqualsType(IntType):
+      elif firstOpType.strictEqualsType(IntType) and secondOpType.strictEqualsType(IntType):
         # Si ambos operandos son enteros, resultado es entero
         tempType = IntType()
       else:
@@ -895,10 +898,12 @@ class IntermediateCodeGenerator():
       else:
         raise NotImplementedError("exitFactor: Operador no implementado")
       
+      firstOpType = firstOperand.getType()
+      secondOpType = secondOperand.getType()
       
       if operatorLexeme == "/":
         tempType = FloatType()
-      elif firstOperand.strictEqualsType(IntType) and secondOperand.strictEqualsType(IntType):
+      elif firstOpType.strictEqualsType(IntType) and secondOpType.strictEqualsType(IntType):
         tempType = IntType()
       else:
         tempType = FloatType()
