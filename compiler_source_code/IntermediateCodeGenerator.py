@@ -849,12 +849,12 @@ class IntermediateCodeGenerator():
       if firstOpType.strictEqualsType(StringType) or secondOpType.strictEqualsType(StringType):
         # Si alguno de los operandos es string, concatenar
         tempType = StringType()
-      elif firstOpType.strictEqualsType(IntType) and secondOpType.strictEqualsType(IntType):
-        # Si ambos operandos son enteros, resultado es entero
-        tempType = IntType()
-      else:
-        # Si uno es float o es ambiguo, resultado es float
+      elif firstOpType.strictEqualsType(FloatType) or secondOpType.strictEqualsType(FloatType):
+        # si alguno de los operandos es float, resultado es float
         tempType = FloatType()
+      else:
+        # Si uno es int o es ambiguo, resultado es int
+        tempType = IntType()
       
       temp = self.newTemp(tempType)
       
@@ -913,10 +913,10 @@ class IntermediateCodeGenerator():
       
       if operatorLexeme == "/":
         tempType = FloatType()
-      elif firstOpType.strictEqualsType(IntType) and secondOpType.strictEqualsType(IntType):
-        tempType = IntType()
-      else:
+      elif firstOpType.strictEqualsType(FloatType) or secondOpType.strictEqualsType(FloatType):
         tempType = FloatType()
+      else:
+        tempType = IntType()
       
       temp = self.newTemp(tempType)
       
