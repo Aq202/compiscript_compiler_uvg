@@ -1,7 +1,7 @@
 from assemblyDescriptors import RegisterDescriptor, AddressDescriptor
 from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary
 from compoundTypes import ObjectType
-from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT
+from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT, INT_TO_STR
 from IntermediateCodeInstruction import SingleInstruction, ConditionalInstruction
 from primitiveTypes import FloatType, IntType, StringType, BoolType
 from utils.decimalToIEEE754 import decimal_to_ieee754
@@ -11,7 +11,7 @@ from utils.getUniqueId import getUniqueId
 intSize = 4
 floatSize = 4
 stringSize = 255
-
+intAsStrSize = 11 # Tamaño máximo de un entero en string (+ null)
 
 class AssemblyGenerator:
   
@@ -213,6 +213,10 @@ class AssemblyGenerator:
       
       elif instruction.operator == CONCAT:
         self.translateConcatOperation(instruction)
+        return
+      
+      elif instruction.operator == INT_TO_STR:
+        self.translateIntToStrOperation(instruction)
         return
 
     elif isinstance(instruction, ConditionalInstruction):
@@ -677,7 +681,7 @@ class AssemblyGenerator:
       addresses[i] = self.getValueInRegister(values[i], ignoreRegisters=addresses)
       
     # Registro que va a irse desplazando a lo largo de la palabra
-    wordCopyReg = self.getRegister(objectToSave=None, useTemp=True)
+    wordCopyReg = self.getRegister(objectToSave=None)
     
     # Contar tamaño de strings
     self.assemblyCode.append(f"li {compilerTemporary[0]}, 0   # Contador de tamaño de ambos strings")
@@ -743,4 +747,114 @@ class AssemblyGenerator:
     
     # Agregar caracter nulo al final
     self.assemblyCode.append(f"sb $zero, 0({compilerTemporary[0]})")
+  
+  def translateIntToStrOperation(self, instruction):
+    
+    number = instruction.arg1
+    destination = instruction.result
+    
+    # Reservar espacio en heap para string
+    memoryAddressReg = self.heapAllocate(intAsStrSize)
+    
+    # Guardar en registro la dirección de memoria del inicio del string
+    resultAddress = self.getRegister(objectToSave=destination)
+    self.assemblyCode.append(f"move {resultAddress}, {memoryAddressReg}")
+    
+    self.addressDescriptor.replaceAddress(destination, resultAddress)
+    self.registerDescriptor.saveValueInRegister(resultAddress, value=destination)
+    
+    # Obtener ubicación más reciente del número
+    numberAddress = self.getValueInRegister(number, ignoreRegisters=[resultAddress])
+    
+    # Guardar el divisor base 10
+    
+    
+    handleZeroLabel = f"handle_zero_{getUniqueId()}"
+    convertLoopLabel = f"convert_loop_{getUniqueId()}"
+    endConvertLabel = f"end_convert_{getUniqueId()}"
+    
+    # Copiar inicio de string a registro temporal
+    stringPointerReg = self.getRegister(objectToSave=None, ignoreRegisters=[resultAddress, numberAddress])
+    self.assemblyCode.append(f"move {stringPointerReg}, {resultAddress}")
+    
+    # Si el número es cero, convertirlo a '0' directamente
+    self.assemblyCode.append(f"beqz {numberAddress}, {handleZeroLabel} # Si el número es cero, convertirlo a '0'")
+    
+    # Guardar divisor base 10
+    self.assemblyCode.append(f"li {compilerTemporary[0]}, 10")
+    
+    self.assemblyCode.append(f"{convertLoopLabel}:")
+    
+    # Obtener digito menos significativo. 
+    digitReg = compilerTemporary[1]
+    self.assemblyCode.append(f"div {numberAddress}, {compilerTemporary[0]}  # Dividir por 10")
+    self.assemblyCode.append(f"mfhi {digitReg}  # Obtener residuo (dig individual)")
+    self.assemblyCode.append(f"mflo {numberAddress}  # Obtener cociente (num reducido)")
+    
+    # Si el número es cero, no agregar char y terminar
+    
+    # Convertir digito a caracter
+    self.assemblyCode.append(f"addi {digitReg}, {digitReg}, 48  # Convertir a caracter ASCII")
+    self.assemblyCode.append(f"sb {digitReg}, 0({stringPointerReg})  # Guardar caracter en string")
+    self.assemblyCode.append(f"addi {stringPointerReg}, {stringPointerReg}, 1  # Avanzar a siguiente caracter en buffer")
+    
+    self.assemblyCode.append(f"bne {numberAddress}, $zero, {convertLoopLabel} # Si no es cero, repetir")
+    
+    self.assemblyCode.append(f"sb $zero, 0({stringPointerReg})  # Agregar caracter nulo al final")
+    
+    # Reverse loop
+    
+    # StringBufferReg está al final del string + 1 (caracter nulo)
+    self.assemblyCode.append(f"subi {stringPointerReg}, {stringPointerReg}, 1  # Retroceder a último caracter")
+    stringPointerBackwardReg = stringPointerReg # Se va a ir decrementando
+    
+    # Guardar otra copia del string, para recorrer de adelante hacia atras
+    stringPointerForwardReg = self.getRegister(objectToSave=None, ignoreRegisters=[resultAddress, stringPointerReg, numberAddress]) # Se va a ir incrementando
+    self.assemblyCode.append(f"move {stringPointerForwardReg}, {resultAddress}")
+    
+    # Hacer reverse de la cadena
+    
+    reverseLoopLabel = f"reverse_loop_{getUniqueId()}"
+    
+    self.assemblyCode.append(f"{reverseLoopLabel}:")
+    
+    # Si los punteros se cruzan, terminar
+    self.assemblyCode.append(f"bgeu {stringPointerForwardReg}, {stringPointerBackwardReg}, {endConvertLabel} # Si puntero forward es igual o mayor que backward, terminar")
+    
+    # Cargar chars
+    self.assemblyCode.append(f"lb {compilerTemporary[0]}, 0({stringPointerForwardReg})  # Cargar char de adelante")
+    self.assemblyCode.append(f"lb {compilerTemporary[1]}, 0({stringPointerBackwardReg})  # Cargar char de atras")
+    
+    # Guardar chars intercambiados
+    self.assemblyCode.append(f"sb {compilerTemporary[1]}, 0({stringPointerForwardReg})  # Guardar char de adelante")
+    self.assemblyCode.append(f"sb {compilerTemporary[0]}, 0({stringPointerBackwardReg})  # Guardar char de atras")
+    
+    # Avanzar y retroceder punteros
+    self.assemblyCode.append(f"addi {stringPointerForwardReg}, {stringPointerForwardReg}, 1  # Avanzar puntero de adelante")
+    self.assemblyCode.append(f"subi {stringPointerBackwardReg}, {stringPointerBackwardReg}, 1  # Retroceder puntero de atras")
+    
+    # Repetir loop
+    self.assemblyCode.append(f"j {reverseLoopLabel}")
+    
+    
+    
+    
+    
+    
+    
+    
+    # Terminar
+    self.assemblyCode.append(f"j {endConvertLabel}")
+    
+    # Handle zero
+    self.assemblyCode.append(f"{handleZeroLabel}:")
+    self.assemblyCode.append(f"li {compilerTemporary[0]}, 48  # Convertir '0' a ASCII")
+    self.assemblyCode.append(f"sb {compilerTemporary[0]}, 0({stringPointerReg})  # Guardar '0' en string")
+    
+    # Agregar nulo luego de cero
+    self.assemblyCode.append(f"addi {stringPointerReg}, {stringPointerReg}, 1  # Avanzar a siguiente caracter en buffer")
+    self.assemblyCode.append(f"sb $zero, 0({stringPointerReg})  # Agregar caracter nulo al final")
+    
+    
+    self.assemblyCode.append(f"{endConvertLabel}:")
     
