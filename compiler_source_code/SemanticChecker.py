@@ -794,7 +794,7 @@ class SemanticChecker(CompiscriptListener):
             return
 
           if type != None and not type.equalsType(childType.__class__) and \
-            not (type.equalsType((IntType)) and childType.equalsType(NumberType)):
+            not (type.equalsType((NumberType)) and childType.equalsType(NumberType)):
               
             # error semántico. Los tipos no son comparables
             line = ctx.start.line
@@ -843,7 +843,7 @@ class SemanticChecker(CompiscriptListener):
             return
           
           if type != None  and not type.equalsType(childType.__class__) and \
-            not (type.equalsType((IntType)) and childType.equalsType(NumberType)):
+            not (type.equalsType((NumberType)) and childType.equalsType(NumberType)):
             
             # error semántico. Los tipos no son comparables
             line = child.start.line
