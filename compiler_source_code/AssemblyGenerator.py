@@ -1,8 +1,8 @@
 from assemblyDescriptors import RegisterDescriptor, AddressDescriptor
 from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary
 from compoundTypes import ObjectType
-from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL
-from IntermediateCodeInstruction import SingleInstruction
+from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN
+from IntermediateCodeInstruction import SingleInstruction, ConditionalInstruction
 from primitiveTypes import FloatType, IntType, StringType, BoolType
 from utils.decimalToIEEE754 import decimal_to_ieee754
 from utils.consoleColors import yellow_text
@@ -45,7 +45,7 @@ class AssemblyGenerator:
     # Si el objeto a guardar ya está en un registro, retornarlo
     prevAddr = self.addressDescriptor.getAddress(objectToSave)
     if isinstance(prevAddr, Register):
-      return prevAddr[0]
+      return prevAddr
     
     freeRegisters = list(self.registerDescriptor.getFreeRegisters())
     
@@ -185,6 +185,9 @@ class AssemblyGenerator:
         self.translateAssignmentInstruction(instruction)
         return
       
+      elif instruction.operator == STRICT_ASSIGN:
+        self.translateStrictAssignmentInstruction(instruction)
+        return
       elif instruction.operator == NEG:
         self.translateNegativeOperation(instruction)
         return
@@ -198,9 +201,20 @@ class AssemblyGenerator:
           self.translateSimpleComparisonOperation(instruction)
         else:
           raise NotImplementedError("No se han implementado comparaciones con strings.", str(instruction))
-
         return
 
+      elif instruction.operator == GOTO:
+        self.translateJumpInstruction(instruction)
+        return
+      
+      elif instruction.operator == LABEL:
+        self.translateLabelInstruction(instruction)
+        return
+
+    elif isinstance(instruction, ConditionalInstruction):
+      self.translateConditionalJumpInstruction(instruction)
+      return
+    
     raise NotImplementedError("Instrucción no soportada.", str(instruction))
   
   def heapAllocate(self, size):
@@ -409,10 +423,30 @@ class AssemblyGenerator:
     result = instruction.result
     
     address = self.getValueInRegister(value)
+    prevResultAddr = self.addressDescriptor.getAddress(result)
+    
+    if isinstance(prevResultAddr, Register):
+      # Si era un registro, eliminar el valor anterior de este
+      self.registerDescriptor.removeValueFromRegister(register=prevResultAddr, value=result)
     
     # Actualizar en descriptores que result = value
     self.addressDescriptor.replaceAddress(object=result, address=address)
     self.registerDescriptor.saveValueInRegister(register=address, value=result)
+    
+  def translateStrictAssignmentInstruction(self, instruction):
+    """
+    A diferencia de la asignación normal, esta instrucción no realiza la asignación de forma virtual
+    a través de los descriptores, sino que mueve el valor de un registro a otro.
+    """
+    
+    value = instruction.arg1
+    result = instruction.result
+    
+    address = self.getValueInRegister(value)
+    resultAddress = self.getValueInRegister(result, ignoreRegisters=[address])
+    
+    self.assemblyCode.append(f"move {resultAddress}, {address}")
+    
     
   def translateNegativeOperation(self, instruction):
     
@@ -517,3 +551,28 @@ class AssemblyGenerator:
     # Actualizar descriptores
     self.registerDescriptor.replaceValueInRegister(resultReg, destination)
     self.addressDescriptor.replaceAddress(destination, resultReg)
+    
+  def translateConditionalJumpInstruction(self, instruction):
+    
+    value = instruction.arg1
+    branchIfFalse = instruction.branchIfFalse
+    goToLabel = instruction.goToLabel
+    
+    # Obtener ubicación más reciente
+    address = self.getValueInRegister(value)
+    
+    if branchIfFalse:
+      # Saltar si es falso
+      self.assemblyCode.append(f"beqz {address}, {goToLabel}")
+    else:
+      # Saltar si es verdadero
+      self.assemblyCode.append(f"bne {address}, $zero, {goToLabel}")
+  
+  def translateJumpInstruction(self, instruction):
+    
+    goToLabel = instruction.arg1
+    self.assemblyCode.append(f"j {goToLabel}")
+    
+  def translateLabelInstruction(self, instruction):
+    label = instruction.arg1
+    self.assemblyCode.append(f"{label}:")

@@ -101,19 +101,22 @@ class SingleInstruction(Instruction):
     
     raise Exception("Single instruction no válida para imprimir")
 class ConditionalInstruction(Instruction):
-  def __init__(self, arg1, operator, arg2, goToLabel, nextInstruction=None):
+  def __init__(self, arg1, goToLabel, branchIfFalse=False, nextInstruction=None):
     """
     Instrucción de salto condicional.
-    IF arg1 operator arg2 GOTO goToLabel
+    branchIfFalse == False:
+      IF arg1 == 1 GOTO goToLabel
+    branchIfFalse == True:
+      IF arg1 == 0 GOTO goToLabel
     Ejemplo:
     IF a == b GOTO L1
     """
     super().__init__(nextInstruction)
     
     self.arg1 = arg1
-    self.operator = operator
-    self.arg2 = arg2
+    self.branchIfFalse = branchIfFalse
     self.goToLabel = goToLabel
   
   def __str__(self):
-    return f"if {format(self.arg1)} {self.operator} {format(self.arg2)} goto {self.goToLabel}"
+    compValue = 0 if self.branchIfFalse else 1
+    return f"if {format(self.arg1)} == {compValue} goto {self.goToLabel}"

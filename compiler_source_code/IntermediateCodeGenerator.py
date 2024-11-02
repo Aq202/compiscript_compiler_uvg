@@ -5,7 +5,7 @@ from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType, F
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT_STR, PRINT_INT, PRINT_FLOAT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE, ASSIGN, NEG, GREATER, GREATER_EQUAL
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT_STR, PRINT_INT, PRINT_FLOAT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE, ASSIGN, NEG, GREATER, GREATER_EQUAL, STRICT_ASSIGN
 from antlr4 import tree
 from Offset import Offset
 from ParamsTree import ParamsTree
@@ -246,7 +246,7 @@ class IntermediateCodeGenerator():
       code.concat(conditionExpression.code)
       
       # Si la condición es falsa, saltar al final
-      code.concat(ConditionalInstruction(arg1=conditionExpression.addr, operator=EQUAL, arg2=falseValue, goToLabel=endLabel))
+      code.concat(ConditionalInstruction(arg1=conditionExpression.addr, branchIfFalse=True, goToLabel=endLabel))
       
     
     # Concatenar código de statement
@@ -286,7 +286,7 @@ class IntermediateCodeGenerator():
     endLabel = self.newLabel()
     
     # Si la condición es falsa, saltar al final
-    conditionalCode = ConditionalInstruction(arg1=expression, operator=EQUAL, arg2=falseValue, goToLabel=skipLabel)
+    conditionalCode = ConditionalInstruction(arg1=expression, branchIfFalse=True, goToLabel=skipLabel)
     conditionalCode.concat(statementCode)
     conditionalCode.concat(SingleInstruction(operator=GOTO, arg1=endLabel)) # Evitar else (si existe)
     conditionalCode.concat(SingleInstruction(operator=LABEL, arg1=skipLabel)) # Evitar if statement
@@ -367,7 +367,7 @@ class IntermediateCodeGenerator():
     whileCode.concat(expressionNode.code)
     
     # Si la condición es falsa, saltar al final
-    whileCode.concat(ConditionalInstruction(arg1=expression, operator=EQUAL, arg2=falseValue, goToLabel=endLabel))
+    whileCode.concat(ConditionalInstruction(arg1=expression, branchIfFalse=True, goToLabel=endLabel))
     
     # Concatenar código de statement
     whileCode.concat(statementCode)
@@ -562,11 +562,13 @@ class IntermediateCodeGenerator():
     valueAddr = ctx.assignment().addr
     valueType = ctx.assignment().type
     ctx.addr = valueAddr
+    isInsideLoop = self.symbolTable.currentScope.isInsideLoop()
     
     if objectDef is not None:
       # Si es una asignación a una variable
       objectDefCopy = objectDef.copy() # Copia de ObjectType() para preservar el tipo
-      ctx.code.concat(SingleInstruction(result=objectDefCopy, arg1=valueAddr, operator=ASSIGN))
+      operator = STRICT_ASSIGN if isInsideLoop else ASSIGN
+      ctx.code.concat(SingleInstruction(result=objectDefCopy, arg1=valueAddr, operator=operator))
       
     elif not valueType.strictEqualsType(FunctionType): # Ignorar métodos (no se pueden asignar)
       
@@ -585,7 +587,8 @@ class IntermediateCodeGenerator():
         propertyPosition = Offset(thisTemp, propertyIndex * MEM_ADDR_SIZE)
         
         # Asignar valor a propiedad en CI
-        ctx.code.concat(SingleInstruction(result=propertyPosition, arg1=valueAddr, operator=ASSIGN))
+        operator = STRICT_ASSIGN if isInsideLoop else ASSIGN
+        ctx.code.concat(SingleInstruction(result=propertyPosition, arg1=valueAddr, operator=operator))
         
       else:
         
@@ -635,7 +638,7 @@ class IntermediateCodeGenerator():
         operand1 = child.addr
         
         # Si el operando es true, saltar al final y no seguir evaluando
-        conditionalCode = ConditionalInstruction(arg1=operand1, operator=EQUAL, arg2=trueValue, goToLabel=trueLabel)
+        conditionalCode = ConditionalInstruction(arg1=operand1,  branchIfFalse=False, goToLabel=trueLabel)
         code.concat(conditionalCode)
           
     temp = self.newTemp(BoolType())
@@ -686,7 +689,7 @@ class IntermediateCodeGenerator():
         operand1 = child.addr
 
         # Si el operando es false, saltar al final y no seguir evaluando
-        conditionalCode = ConditionalInstruction(arg1=operand1, operator=EQUAL, arg2=falseValue, goToLabel=falseLabel)
+        conditionalCode = ConditionalInstruction(arg1=operand1, branchIfFalse=True, goToLabel=falseLabel)
         code.concat(conditionalCode)
           
     temp = self.newTemp(BoolType())
