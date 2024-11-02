@@ -35,7 +35,6 @@ class IntermediateCodeGenerator():
     Crea un nuevo temporal y lo agrega a la tabla de simbolos
     value: debe ser un valor primitivo o un ObjectType
     """
-    #tempName = f"t{self.tempCounter}-{uuid.uuid4()}"
     tempName = f"t{self.tempCounter}"
     self.tempCounter += 1
     temp = self.symbolTable.currentScope.addTemporary(tempName, type)

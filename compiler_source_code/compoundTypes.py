@@ -70,7 +70,7 @@ class FunctionType:
       self.returnTypeHasChanged = False
       self.blockReturnTypeChange = False
       self.isMethod = False
-      self.id = uuid.uuid4()
+      self.id = uuid.uuid4().hex[:6]
     
     def setBodyScope(self, bodyScope):
       self.bodyScope = bodyScope
