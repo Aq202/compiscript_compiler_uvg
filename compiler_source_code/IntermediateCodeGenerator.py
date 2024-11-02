@@ -395,7 +395,18 @@ class IntermediateCodeGenerator():
         # Guardar referencia a this en arbol de parámetros
         _, currentParams = self.thisReferenceParams.initNodeParams()
         currentParams.add("this", thisTemp)
-    
+        
+    if scope.type == ScopeType.FUNCTION or scope.type == ScopeType.CONSTRUCTOR:
+      
+      functionDef = scope.reference
+      for param in functionDef.params:
+        
+        param = scope.searchElement(param, searchInParentScopes = False, searchInParentClasses = False, searchTemporaries = False)
+        
+        # Asignar un offset a la variable local que almacena params
+        param.assignOffset(scope.getOffset(), MEM_ADDR_SIZE, STACK_POINTER)
+        scope.setOffset(scope.getOffset() + MEM_ADDR_SIZE)
+        
 
   def exitBlock(self, ctx: CompiscriptParser.BlockContext):
     if not self.continueCodeGeneration(): return
@@ -424,9 +435,8 @@ class IntermediateCodeGenerator():
         
         param = scope.searchElement(param, searchInParentScopes = False, searchInParentClasses = False, searchTemporaries = False)
         
-        # Asignar un offset a la variable local que almacena params
-        param.assignOffset(scope.getOffset(), MEM_ADDR_SIZE, STACK_POINTER)
-        scope.setOffset(scope.getOffset() + MEM_ADDR_SIZE)
+        # Asignación de offset de parametros se hace en enter block, para evitar problemas
+        # con las copias de objetos realizadas en primary 
         
         # Guardar código intermedio de asignación de parámetros
         instruction = SingleInstruction(result=param, operator=GET_ARG, arg1=str(paramsCount + i))
