@@ -640,12 +640,12 @@ class IntermediateCodeGenerator():
           
     temp = self.newTemp(BoolType())
     # Si ningún operando es true, asignar falseVal a temporal y saltar al final
-    code.concat(SingleInstruction(result=temp, arg1=falseValue))
+    code.concat(SingleInstruction(result=temp, arg1=falseValue, operator=STORE))
     code.concat(SingleInstruction(operator=GOTO, arg1=endLabel))
     
     # Etiqueta de true: asignar trueVal a temporal
     code.concat(SingleInstruction(operator=LABEL, arg1=trueLabel))
-    code.concat(SingleInstruction(result=temp, arg1=trueValue))
+    code.concat(SingleInstruction(result=temp, arg1=trueValue, operator=STORE))
     
     # Etiqueta de fin
     code.concat(SingleInstruction(operator=LABEL, arg1=endLabel))
@@ -691,12 +691,12 @@ class IntermediateCodeGenerator():
           
     temp = self.newTemp(BoolType())
     # Si ningún operando es false, asignar trueVal a temporal y saltar al final
-    code.concat(SingleInstruction(result=temp, arg1=trueValue))
+    code.concat(SingleInstruction(result=temp, arg1=trueValue, operator=STORE))
     code.concat(SingleInstruction(operator=GOTO, arg1=endLabel))
     
     # Etiqueta de falso: asignar falseVal a temporal
     code.concat(SingleInstruction(operator=LABEL, arg1=falseLabel))
-    code.concat(SingleInstruction(result=temp, arg1=falseValue))
+    code.concat(SingleInstruction(result=temp, arg1=falseValue, operator=STORE))
     
     # Etiqueta de fin
     code.concat(SingleInstruction(operator=LABEL, arg1=endLabel))
