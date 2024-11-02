@@ -299,9 +299,17 @@ class SemanticChecker(CompiscriptListener):
       super().exitPrintStmt(ctx)
 
       expression = ctx.expression()
-
-      if expression != None:
-        print("\033[32mPRINT:\033[0m", expression.type)
+      type = expression.type.getType()
+      
+      if not type.equalsType((CompilerError, FloatType, IntType, StringType, BoolType)):
+        # error semántico
+        line = ctx.start.line
+        column = ctx.start.column
+        error = SemanticError(f"El tipo '{type.name}' no es imprimible.", line, column)
+        self.addSemanticError(error)
+        ctx.type = error
+        return
+      
 
       return self.intermediateCodeGenerator.exitPrintStmt(ctx)
 

@@ -311,7 +311,7 @@ class IntermediateCodeGenerator():
     ctx.code = self.getChildrenCode(ctx)
     
     child = ctx.getChild(1)
-    if child.type.equalsType(IntType):
+    if child.type.equalsType((IntType, BoolType)):
       ctx.code.concat(SingleInstruction(operator=PRINT_INT, arg1=ctx.expression().addr))
     elif child.type.equalsType(FloatType):
       ctx.code.concat(SingleInstruction(operator=PRINT_FLOAT, arg1=ctx.expression().addr))
