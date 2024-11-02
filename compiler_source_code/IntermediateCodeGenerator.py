@@ -5,7 +5,7 @@ from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType, F
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT_STR, PRINT_INT, PRINT_FLOAT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE, ASSIGN, NEG
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT_STR, PRINT_INT, PRINT_FLOAT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE, ASSIGN, NEG, GREATER, GREATER_EQUAL
 from antlr4 import tree
 from Offset import Offset
 from ParamsTree import ParamsTree
@@ -722,7 +722,7 @@ class IntermediateCodeGenerator():
       return
     
     # Operación de comparación
-    code = None
+    instruction = None
     numOperations = (len(ctx.children) - 1) // 2
     
     temp = self.newTemp(BoolType())
@@ -733,18 +733,15 @@ class IntermediateCodeGenerator():
       operand1 = ctx.getChild(firstOperandIndex).addr
       operatorLexeme = ctx.getChild(firstOperandIndex + 1).getText()
       operand2 = ctx.getChild(firstOperandIndex + 2).addr
-      
-      operator = EQUAL if operatorLexeme == "==" else NOT_EQUAL
-      instruction = SingleInstruction(result=temp, arg1=operand1, operator=operator, arg2=operand2)
-      
-      if code == None:
-        code = instruction
+            
+      if operatorLexeme == "==":
+        instruction = SingleInstruction(operator=EQUAL, arg1=operand1, arg2=operand2, result=temp)
       else:
-        code.concat(instruction)
+        instruction = SingleInstruction(operator=NOT_EQUAL, arg1=operand1, arg2=operand2, result=temp)
         
     # Guardar addr de resultado de operación de comparación y concatenar código
     ctx.addr = temp
-    ctx.code.concat(code)
+    ctx.code.concat(instruction)
 
   def enterComparison(self, ctx: CompiscriptParser.ComparisonContext):
     if not self.continueCodeGeneration(): return
@@ -762,7 +759,7 @@ class IntermediateCodeGenerator():
     
     # Comparación
     
-    code = None
+    instruction = None
     numOperations = (len(ctx.children) - 1) // 2
   
     temp = self.newTemp(BoolType())
@@ -773,33 +770,25 @@ class IntermediateCodeGenerator():
       operand1 = ctx.getChild(firstOperandIndex).addr
       operator = ctx.getChild(firstOperandIndex + 1).getText()
       operand2 = ctx.getChild(firstOperandIndex + 2).addr
-      
-      # Se escoge el operador opuesto, para no seguir evaluando 
-      # Con uno que no cumpla, la expresión completa es falsa
+            
       if operator == "<":
         instruction = SingleInstruction(operator=LESS, arg1=operand1, arg2=operand2, result=temp)
-      elif operator == ">":
-        lessOrEqualTemp = self.newTemp(BoolType())
-        instruction = SingleInstruction(operator=LESS_EQUAL, arg1=operand1, arg2=operand2, result=lessOrEqualTemp)
-        instruction.concat(SingleInstruction(operator=NOT, arg1=lessOrEqualTemp, result=temp))
+        
+      elif operator == ">": 
+        instruction = SingleInstruction(operator=GREATER, arg1=operand1, arg2=operand2, result=temp)
         
       elif operator == "<=":
         instruction = SingleInstruction(operator=LESS_EQUAL, arg1=operand1, arg2=operand2, result=temp)
+        
       elif operator == ">=":
-        lessTemp = self.newTemp(BoolType())
-        instruction = SingleInstruction(operator=LESS, arg1=operand1, arg2=operand2, result=lessTemp)
-        instruction.concat(SingleInstruction(operator=NOT, arg1=lessTemp, result=temp))
+        instruction = SingleInstruction(operator=GREATER_EQUAL, arg1=operand1, arg2=operand2, result=temp)
+        
       else:
         raise NotImplementedError("exitComparison: Operador no implementado)")
-      
-      if code == None:
-        code = instruction
-      else:
-        code.concat(instruction)
-    
+          
     # Guardar addr de resultado de operación de comparación y concatenar código
     ctx.addr = temp
-    ctx.code.concat(code)
+    ctx.code.concat(instruction)
 
   def enterTerm(self, ctx: CompiscriptParser.TermContext):
     if not self.continueCodeGeneration(): return
