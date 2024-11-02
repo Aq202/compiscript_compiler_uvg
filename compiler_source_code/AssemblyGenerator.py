@@ -1,7 +1,7 @@
 from assemblyDescriptors import RegisterDescriptor, AddressDescriptor
 from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary
 from compoundTypes import ObjectType
-from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN
+from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT
 from IntermediateCodeInstruction import SingleInstruction, ConditionalInstruction
 from primitiveTypes import FloatType, IntType, StringType, BoolType
 from utils.decimalToIEEE754 import decimal_to_ieee754
@@ -210,6 +210,10 @@ class AssemblyGenerator:
       elif instruction.operator == LABEL:
         self.translateLabelInstruction(instruction)
         return
+      
+      elif instruction.operator == CONCAT:
+        self.translateConcatOperation(instruction)
+        return
 
     elif isinstance(instruction, ConditionalInstruction):
       self.translateConditionalJumpInstruction(instruction)
@@ -286,10 +290,13 @@ class AssemblyGenerator:
       register = self.getRegister(objectToSave=destination)
       self.assemblyCode.append(f"move {register}, {memoryAddressReg}  # Guardar dirección de memoria del string")
       
+      # Guardar en memoria estática la dirección del valor en el heap
+      self.assemblyCode.append(f"sw {register}, {destination.offset}({self.getBasePointer(destination)})")
+      
       # Actualizar descriptores
       self.registerDescriptor.saveValueInRegister(register, value=destination)
       self.addressDescriptor.insertAddress(object=destination, address=register)
-      
+      self.addressDescriptor.insertAddress(object=destination, address=destination)
       
       
       
@@ -658,3 +665,82 @@ class AssemblyGenerator:
   def translateLabelInstruction(self, instruction):
     label = instruction.arg1
     self.assemblyCode.append(f"{label}:")
+    
+  def translateConcatOperation(self, instruction):
+    
+    values = (instruction.arg1, instruction.arg2)
+    destination = instruction.result
+    
+    # Obtener inicio de bloques de memoria de strings
+    addresses = [None, None]
+    for i in range(2):
+      addresses[i] = self.getValueInRegister(values[i], ignoreRegisters=addresses)
+      
+    # Registro que va a irse desplazando a lo largo de la palabra
+    wordCopyReg = self.getRegister(objectToSave=None, useTemp=True)
+    
+    # Contar tamaño de strings
+    self.assemblyCode.append(f"li {compilerTemporary[0]}, 0   # Contador de tamaño de ambos strings")
+    for i in range(2):
+      strLenLoopLabel = f"str_len_loop{i+1}_{getUniqueId()}"
+      strLenEndLabel = f"str_len_end{i+1}_{getUniqueId()}"
+      
+      # Copiar inicio de string a temporal, para que el original no se modifique
+      self.assemblyCode.append(f"move {wordCopyReg}, {addresses[i]}   # Copiar dirección de memoria del string {i+1}")
+      
+      self.assemblyCode.append(f"{strLenLoopLabel}:")
+      # Cargar byte actual
+      self.assemblyCode.append(f"lb {compilerTemporary[1]}, 0({wordCopyReg})")
+      
+      # Si es nulo, terminar
+      self.assemblyCode.append(f"beqz {compilerTemporary[1]}, {strLenEndLabel}")
+      
+      # Incrementar longitud
+      self.assemblyCode.append(f"addi {compilerTemporary[0]}, {compilerTemporary[0]}, 1")
+      
+      # Avanzar al siguiente byte
+      self.assemblyCode.append(f"addi {wordCopyReg}, {wordCopyReg}, 1")
+      
+      # Repetir loop con string actual
+      self.assemblyCode.append(f"j {strLenLoopLabel}")
+      
+      self.assemblyCode.append(f"{strLenEndLabel}:")
+      
+    # Sumar 1 por el caracter nulo
+    self.assemblyCode.append(f"addi {compilerTemporary[0]}, {compilerTemporary[0]}, 1")
+      
+    # Reservar memoria para el nuevo string
+    self.assemblyCode.append(f"li $v0, 9")
+    self.assemblyCode.append(f"move $a0, {compilerTemporary[0]}   # Reservar en heap tamanio total de ambos strings")
+    self.assemblyCode.append("syscall")
+    
+    # Guardar en registro resultante, la dirección de memoria del nuevo string
+    resultAddress = self.getRegister(objectToSave=destination, ignoreRegisters=[wordCopyReg]+ addresses)
+    self.assemblyCode.append(f"move {resultAddress}, $v0")
+    
+    # Actualizar descriptores, indicar que el inicio del string resultante está en el registro
+    self.addressDescriptor.replaceAddress(destination, resultAddress)
+    self.registerDescriptor.saveValueInRegister(register=resultAddress, value=destination)
+    
+    # Copiar inicio de strings a temporal, el cuál se irá desplazando
+    self.assemblyCode.append(f"move {compilerTemporary[0]}, {resultAddress} # Copiar en temp inicio de string resultante")
+      
+    # Iniciar a copiar strings
+    loopCopyLabels = (f"copy_string1_{getUniqueId()}", f"copy_string2_{getUniqueId()}")
+    endCopyLabels = (f"end_copy_string1_{getUniqueId()}", f"end_copy_string2_{getUniqueId()}")
+  
+    for i in range(2):
+      
+      self.assemblyCode.append(f"move {wordCopyReg}, {addresses[i]}   # Copiar dirección de memoria del string {i+1}")
+      self.assemblyCode.append(f"{loopCopyLabels[i]}:")
+      self.assemblyCode.append(f"lb {compilerTemporary[1]}, 0({wordCopyReg}) # Cargar byte actual a copiar de string {i+1}")
+      self.assemblyCode.append(f"beqz {compilerTemporary[1]}, {endCopyLabels[i]}  # Si es nulo, terminar string {i+1}")
+      self.assemblyCode.append(f"sb {compilerTemporary[1]}, 0({compilerTemporary[0]}) # Copiar byte a string resultante")
+      self.assemblyCode.append(f"addi {wordCopyReg}, {wordCopyReg}, 1")
+      self.assemblyCode.append(f"addi {compilerTemporary[0]}, {compilerTemporary[0]}, 1")
+      self.assemblyCode.append(f"j {loopCopyLabels[i]}   # continuar copiando string {i+1}")
+      self.assemblyCode.append(f"{endCopyLabels[i]}:  # Fin de copia de string {i+1}")
+    
+    # Agregar caracter nulo al final
+    self.assemblyCode.append(f"sb $zero, 0({compilerTemporary[0]})")
+    

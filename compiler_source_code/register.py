@@ -22,8 +22,8 @@ class Register:
     
   def __eq__(self, obj):
     if self.number != None:
-      return obj.type == self.type and obj.number == self.number
-    return obj.type == self.type
+      return isinstance(obj, Register) and obj.type == self.type and obj.number == self.number
+    return isinstance(obj, Register) and obj.type == self.type
   
   def __hash__(self):
     if self.number == None:
