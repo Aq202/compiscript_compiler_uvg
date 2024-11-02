@@ -5,7 +5,7 @@ from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType, F
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT_STR, PRINT_INT, PRINT_FLOAT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE, ASSIGN, NEG, GREATER, GREATER_EQUAL, STRICT_ASSIGN
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT_STR, PRINT_INT, PRINT_FLOAT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE, ASSIGN, NEG, GREATER, GREATER_EQUAL, STRICT_ASSIGN, INT_TO_STR, FLOAT_TO_STR
 from antlr4 import tree
 from Offset import Offset
 from ParamsTree import ParamsTree
@@ -817,7 +817,7 @@ class IntermediateCodeGenerator():
     
     # Son operaciones aritméticas
     
-    code = None
+    code = EmptyInstruction()
     numOperations = (len(ctx.children) - 1) // 2
     nodeType = ctx.type
     
@@ -837,6 +837,22 @@ class IntermediateCodeGenerator():
         # Si es ambiguo, preferir suma aritmética
         if nodeType.strictEqualsType(StringType):
           operation = CONCAT
+          
+          # Si un operando no es string, convertir a string. Si es ambiguo convierte de int a string.
+          
+          if not firstOperand.getType().strictEqualsType(StringType):
+          
+            operator = FLOAT_TO_STR if firstOperand.getType().strictEqualsType(FloatType) else INT_TO_STR
+            conversionTemp = self.newTemp(StringType())
+            code.concat(SingleInstruction(result=conversionTemp, arg1=firstOperand, operator=operator))
+            firstOperand = conversionTemp
+          
+          if not secondOperand.getType().strictEqualsType(StringType):
+          
+            operator = FLOAT_TO_STR if secondOperand.getType().strictEqualsType(FloatType) else INT_TO_STR
+            conversionTemp = self.newTemp(StringType())
+            code.concat(SingleInstruction(result=conversionTemp, arg1=secondOperand, operator=operator))
+            secondOperand = conversionTemp
           
       elif operatorLexeme == "-":
         operation = MINUS
@@ -860,10 +876,7 @@ class IntermediateCodeGenerator():
       
       # Agregar instrucción de operación
       instruction = SingleInstruction(result=temp, arg1=firstOperand, operator=operation, arg2=secondOperand)
-      if code == None:
-        code = instruction
-      else:
-        code.concat(instruction)
+      code.concat(instruction)
         
       # Actualizar primer operando con resultado de operación
       firstOperand = temp
