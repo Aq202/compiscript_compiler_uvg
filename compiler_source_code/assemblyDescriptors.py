@@ -54,6 +54,13 @@ class RegisterDescriptor:
       if register.type == type:
         registers[register] = self._registers[register]
     return registers
+  
+  def freeRegister(self, register):
+      
+      if register not in self._registers:
+        raise Exception(f"El registro {register} no existe.")
+      
+      self._registers[register] = set()
 
   def __str__(self) -> str:
     res = "\nRegister Descriptor:\n"

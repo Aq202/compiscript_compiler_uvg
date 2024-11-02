@@ -1,11 +1,12 @@
 from assemblyDescriptors import RegisterDescriptor, AddressDescriptor
 from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary
 from compoundTypes import ObjectType
-from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG
+from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG
 from IntermediateCodeInstruction import SingleInstruction
-from primitiveTypes import FloatType, IntType
+from primitiveTypes import FloatType, IntType, StringType
 from utils.decimalToIEEE754 import decimal_to_ieee754
 from utils.consoleColors import yellow_text
+from uuid import uuid4
 
 intSize = 4
 floatSize = 4
@@ -72,14 +73,20 @@ class AssemblyGenerator:
       objectBasePointer = self.getBasePointer(object)
       objectOffset = object.offset
       
-      # Obtener dirección de memoria para guardar el valor (en el heap)
-      self.assemblyCode.append(f"lw {compilerTemporary[0]}, {objectOffset}({objectBasePointer})")
-      
-      if object.strictEqualsType(FloatType):
-        self.assemblyCode.append(f"s.s {minRegister}, 0({compilerTemporary[0]})")
-      else:
-        self.assemblyCode.append(f"sw {minRegister}, 0({compilerTemporary[0]})")
+      if object.equalsType(FloatType) or object.equalsType(IntType):
+        # Obtener dirección de memoria para guardar el valor (en el heap)
+        self.assemblyCode.append(f"lw {compilerTemporary[0]}, {objectOffset}({objectBasePointer})")
         
+        if object.strictEqualsType(FloatType):
+          self.assemblyCode.append(f"s.s {minRegister}, 0({compilerTemporary[0]})")
+        else:
+          self.assemblyCode.append(f"sw {minRegister}, 0({compilerTemporary[0]})")
+      
+      elif object.strictEqualsType(StringType):
+        # Lo que se guarda en el registro, es el inicio del bloque de memoria de la cadena
+        # Guardar en memoria estática dicha dirección
+        self.assemblyCode.append(f"sw {minRegister}, {objectOffset}({objectBasePointer})")
+      
       # Actualizar descriptores
       self.registerDescriptor.removeValueFromRegister(register=minRegister, value=object)
       self.addressDescriptor.removeAddress(object, address=minRegister)
@@ -134,7 +141,13 @@ class AssemblyGenerator:
         # Cargar valor final
         self.assemblyCode.append(f"l.s {address}, 0({compilerTemporary[0]})")
         
-      else:
+      elif value.strictEqualsType(StringType):
+        
+        address = self.getRegister(objectToSave=value, ignoreRegisters=ignoreRegisters) # Obtener registro entero
+        # Cargar dirrección del bloque de memoria en el heap
+        self.assemblyCode.append(f"lw {address}, {value.offset}({self.getBasePointer(value)})")
+        
+      else: # Tratar com int
         address = self.getRegister(objectToSave=value, ignoreRegisters=ignoreRegisters) # Obtener registro entero
         # Cargar dirrección del bloque de memoria en el heap
         self.assemblyCode.append(f"lw {compilerTemporary[0]}, {value.offset}({self.getBasePointer(value)})")
@@ -176,6 +189,10 @@ class AssemblyGenerator:
         self.translateNegativeOperation(instruction)
         return
       
+      elif instruction.operator == PRINT_STR:
+        self.translateStringPrint(instruction)
+        return
+      
 
     raise NotImplementedError("Instrucción no soportada.", str(instruction))
   
@@ -194,7 +211,7 @@ class AssemblyGenerator:
     destination = instruction.result
     value = instruction.arg1.value
     valueType = instruction.arg1.type
-        
+    
     if isinstance(valueType, IntType):
       # Asignación de número
       memoryAddressReg = self.heapAllocate(intSize)
@@ -228,6 +245,29 @@ class AssemblyGenerator:
       self.registerDescriptor.replaceValueInRegister(register, destination)
       self.addressDescriptor.insertAddress(destination, register)
       self.addressDescriptor.insertAddress(destination, destination)
+      
+    elif valueType.strictEqualsType(StringType):      
+      
+      # Calcular tamaño: -2 por las comillas y + 1 por el caracter nulo
+      size = len(value) - 1
+      memoryAddressReg = self.heapAllocate(size)
+      
+      # Agregar código assembly para guardar cada caracter en memoria
+      for i, char in enumerate(value[1:-1]):
+        self.assemblyCode.append(f"li {compilerTemporary[0]}, {ord(char)}   # Caracter {char}")
+        self.assemblyCode.append(f"sb {compilerTemporary[0]}, {i}({memoryAddressReg})")
+        
+      # Agregar caracter nulo al final
+      self.assemblyCode.append(f"li {compilerTemporary[0]}, 0   # Caracter nulo")
+      self.assemblyCode.append(f"sb {compilerTemporary[0]}, {size - 1}({memoryAddressReg})")
+      
+      # Guardar en registro la dirección de memoria del inicio del string
+      register = self.getRegister(objectToSave=destination)
+      self.assemblyCode.append(f"move {register}, {memoryAddressReg}  # Guardar dirección de memoria del string")
+      
+      # Actualizar descriptores
+      self.registerDescriptor.saveValueInRegister(register, value=destination)
+      self.addressDescriptor.insertAddress(object=destination, address=register)
       
       
       
@@ -263,6 +303,29 @@ class AssemblyGenerator:
     self.assemblyCode.append("li $v0, 11")
     self.assemblyCode.append("li $a0, 10")
     self.assemblyCode.append("syscall")
+
+  def translateStringPrint(self, instruction):
+    
+    value = instruction.arg1
+    
+    # Obtener ubicación de inicio de bloque de mem de string en registro
+    address = self.getValueInRegister(value)
+    
+    # Cargar e imprimir cada caracter hasta encontrar el nulo
+    id = uuid4()
+    loopLabel = f"print_string"
+    endLabel = f"end_print_string"
+    
+    self.assemblyCode.append(f"move {compilerTemporary[0]}, {address} # Guardar dirección de memoria del string")
+    self.assemblyCode.append(f"{loopLabel}:   # Imprimir string")
+    self.assemblyCode.append(f"lb $a0, 0({compilerTemporary[0]})")
+    self.assemblyCode.append(f"beqz $a0, {endLabel}")
+    self.assemblyCode.append(f"li $v0, 11")
+    self.assemblyCode.append(f"syscall")
+    self.assemblyCode.append(f"addi {compilerTemporary[0]}, {compilerTemporary[0]}, 1 # Siguiente caracter")
+    self.assemblyCode.append(f"j {loopLabel}")
+    self.assemblyCode.append(f"{endLabel}:")
+    
     
   
   def translateArithmeticOperation(self, instruction):
