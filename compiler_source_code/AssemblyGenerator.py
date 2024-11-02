@@ -200,7 +200,7 @@ class AssemblyGenerator:
         if not instruction.arg1.strictEqualsType(StringType):
           self.translateSimpleComparisonOperation(instruction)
         else:
-          raise NotImplementedError("No se han implementado comparaciones con strings.", str(instruction))
+          self.translateStringComparisonOperation(instruction)
         return
 
       elif instruction.operator == GOTO:
@@ -487,8 +487,7 @@ class AssemblyGenerator:
     floatOperation = values[0].strictEqualsType(FloatType) or values[1].strictEqualsType(FloatType)
     
     # Reservar ubicación en heap correspondiente al resultado
-    size = floatSize if floatOperation else intSize
-    memoryAddressReg = self.heapAllocate(size)
+    memoryAddressReg = self.heapAllocate(intSize)
     # Guardar en memoria estática la dirección del valor en el heap
     self.assemblyCode.append(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
     
@@ -551,7 +550,90 @@ class AssemblyGenerator:
     # Actualizar descriptores
     self.registerDescriptor.replaceValueInRegister(resultReg, destination)
     self.addressDescriptor.replaceAddress(destination, resultReg)
+  
+  def translateStringComparisonOperation(self, instruction):
+    values = (instruction.arg1, instruction.arg2)
+    destination = instruction.result
+    operation = instruction.operator
     
+    # Reservar ubicación en heap correspondiente al resultado
+    memoryAddressReg = self.heapAllocate(intSize)
+    # Guardar en memoria estática la dirección del valor en el heap
+    self.assemblyCode.append(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
+
+    # Cargar valores en registros
+    addresses = [None, None]
+    for i in range(2):
+      addresses[i] = self.getValueInRegister(values[i], ignoreRegisters=addresses)
+      
+    repeatLabel = f"repeat_string_comp_{getUniqueId()}"
+    equalLabel = f"equal_string_comp_{getUniqueId()}"
+    endLabel = f"end_string_comp_{getUniqueId()}"
+    charDiffLabel = f"char_diff_{getUniqueId()}"
+    
+    resultReg = self.getRegister(objectToSave=destination, ignoreRegisters=addresses)
+    
+    # Loop de comparación de caracteres
+    self.assemblyCode.append(f"{repeatLabel}:")
+        
+    # Cargar byte
+    for i in range(2):
+      self.assemblyCode.append(f"lb {compilerTemporary[i]}, 0({addresses[i]})")
+      
+    self.assemblyCode.append(f"bne {compilerTemporary[0]}, {compilerTemporary[1]}, {charDiffLabel}  # Comparar bytes")
+    
+    # Si son iguales y llegamos al final, las cadenas son iguales
+    self.assemblyCode.append(f"beqz {compilerTemporary[0]}, {equalLabel}  # Si ambos son null, son iguales")
+    
+    # Avanzar a siguiente char
+    self.assemblyCode.append(f"addi {addresses[0]}, {addresses[0]}, 1")
+    self.assemblyCode.append(f"addi {addresses[1]}, {addresses[1]}, 1")
+    
+    # Repetir
+    self.assemblyCode.append(f"j {repeatLabel}")
+    
+    # Diferencia de caracteres
+    self.assemblyCode.append(f"{charDiffLabel}:")
+    
+    if operation == EQUAL:
+      # Si la operación era igual, ya que un char es distinto, result es false
+      self.assemblyCode.append(f"li {resultReg}, 0")
+      self.assemblyCode.append(f"j {endLabel}")
+    
+    elif operation == NOT_EQUAL:
+      # Si la operación era no igual, ya que un char es distinto, result es true
+      self.assemblyCode.append(f"li {resultReg}, 1")
+      self.assemblyCode.append(f"j {endLabel}")
+      
+    else:
+
+      # Calcular la diferencia entre chars
+      self.assemblyCode.append(f"sub {compilerTemporary[0]}, {compilerTemporary[0]}, {compilerTemporary[1]}")
+    
+      if operation in (LESS, LESS_EQUAL):
+        # Si la operación es menor, para ser true debe ser negativo
+        self.assemblyCode.append(f"slt {resultReg}, {compilerTemporary[0]}, $zero")
+      else:
+        # Si la operación es mayor, para ser true debe ser positivo
+        self.assemblyCode.append(f"sgt {resultReg}, {compilerTemporary[0]}, $zero")
+    
+    # Saltar al final
+    self.assemblyCode.append(f"j {endLabel}")
+    
+    # Si las cadenas son iguales
+    self.assemblyCode.append(f"{equalLabel}:")
+    if operation in (EQUAL, LESS_EQUAL, GREATER_EQUAL):
+      self.assemblyCode.append(f"li {resultReg}, 1")
+    else:
+      self.assemblyCode.append(f"li {resultReg}, 0")
+      
+    # Fin
+    self.assemblyCode.append(f"{endLabel}:")
+    
+    # Actualizar descriptores
+    self.registerDescriptor.replaceValueInRegister(resultReg, destination)
+    self.addressDescriptor.replaceAddress(destination, address=resultReg)
+  
   def translateConditionalJumpInstruction(self, instruction):
     
     value = instruction.arg1
