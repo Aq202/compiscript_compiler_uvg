@@ -70,6 +70,8 @@ class AssemblyGenerator:
     self.assemblyCode.append(f"move $a0, $a2")
     self.assemblyCode.append("syscall")
     
+    # Guardar dirección de memoria en la memoria estática
+    self.assemblyCode.append(f"sw $v0, 0($a1)")   
     
     # Return. V0 ya contiene la dirección del bloque creado en el heap
     self.assemblyCode.append(f"jr $ra")
