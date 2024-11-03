@@ -25,11 +25,11 @@ class RegisterDescriptor:
     self._registers[register].add(value)
     
   def replaceValueInRegister(self, register, value):
-      
-      if register not in self._registers:
-        raise Exception(f"El registro {register} no existe.")
-      
-      self._registers[register] = {value}
+    
+    if register not in self._registers:
+      raise Exception(f"El registro {register} no existe.")
+    
+    self._registers[register] = {value}
     
   def removeValueFromRegister(self, register, value):
     
@@ -56,11 +56,11 @@ class RegisterDescriptor:
     return registers
   
   def freeRegister(self, register):
-      
-      if register not in self._registers:
-        raise Exception(f"El registro {register} no existe.")
-      
-      self._registers[register] = set()
+
+    if register not in self._registers:
+      raise Exception(f"El registro {register} no existe.")
+    
+    self._registers[register] = set()
 
   def __str__(self) -> str:
     res = "\nRegister Descriptor:\n"
@@ -91,10 +91,10 @@ class AddressDescriptor:
     
   def insertAddress(self, object, address):
     
-    if object not in self._addresses:
+    if not any(object == obj for obj in self._addresses):
       self._addresses[object] = [address]
     
-    elif address not in self._addresses[object]:
+    elif not any(address == addr for addr in self._addresses[object]):
       
       if isinstance(address, Register):
         # Validar que no tenga un registro asignado
@@ -116,7 +116,7 @@ class AddressDescriptor:
       
   def removeAddress(self, object, address):
     
-    if address in self._addresses[object]:
+    if any(address == addr for addr in self._addresses[object]):
       self._addresses[object].remove(address)
     
     if len(self._addresses[object]) == 0:
@@ -124,7 +124,7 @@ class AddressDescriptor:
       
   def getAddress(self, object):
     
-    if object not in self._addresses or len(self._addresses[object]) == 0:
+    if not any(object == obj for obj in self._addresses) or len(self._addresses[object]) == 0:
       return None
     
     addresses = self._addresses[object]

@@ -152,7 +152,8 @@ class IntermediateCodeGenerator():
     
     if expressionNode is None:
       # Asignar NIL
-      ctx.code.concat(SingleInstruction(result=objectDefCopy, arg1=Value(None, NilType()), operator=ASSIGN))
+      objectDefCopy.setType(IntType())
+      ctx.code.concat(SingleInstruction(result=objectDefCopy, arg1=Value("0", IntType()), operator=STORE, operatorFirst=True))
     
     else:
       expressionAddr = expressionNode.addr
@@ -1309,8 +1310,8 @@ class IntermediateCodeGenerator():
         ctx.addr = temp
         
       elif isinstance(nodeType, NilType):
-        temp = self.newTemp(ctx.type)
-        ctx.code.concat(SingleInstruction(result=temp, arg1=Value(None, NilType())))
+        temp = self.newTemp(IntType())
+        ctx.code.concat(SingleInstruction(result=temp, arg1=Value("0", IntType()), operator=STORE, operatorFirst=True))
         ctx.addr = temp
         
       elif isinstance(nodeType, BoolType):

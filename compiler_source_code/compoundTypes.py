@@ -399,7 +399,7 @@ class ObjectType:
   
   def __repr__(self):
     reference = self.reference if self.reference != self else "ObjectType(SELF)"
-    repr = [f"name={self.name}"]
+    repr = [f"name={self.name}", f"scope={self.scope}"]
     if reference != None:
       repr.append(f"reference={reference}")
     if self.type != None and not self.type.strictEqualsType(AnyType):

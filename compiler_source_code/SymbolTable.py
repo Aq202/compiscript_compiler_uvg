@@ -2,6 +2,7 @@ from enum import Enum
 from copy import deepcopy
 from primitiveTypes import AnyType
 from compoundTypes import FunctionType, ClassType, ObjectType, FunctionOverload
+from utils.getUniqueId import getUniqueId
 
 class ScopeType(Enum):
   """
@@ -34,6 +35,7 @@ class Scope:
     self.parent = parent
     self.level = level
     self.type = type
+    self.id = getUniqueId()
 
     self.elements = dict()
     self.functions = dict() # Deberá ser {name: [FunctionType]}
@@ -93,12 +95,12 @@ class Scope:
     self.elements[name] = classObj
 
   def addObject(self, name, type):
-    object = ObjectType(name, type, self)
+    object = ObjectType(name, type, self.id)
     self.elements[name] = object
     return object
     
   def addTemporary(self, name, type = AnyType()):
-    temp = ObjectType(name, type, self)
+    temp = ObjectType(name, type, self.id)
     self.temporaries[name] = temp
     return temp
 
