@@ -432,6 +432,11 @@ class AssemblyGenerator:
     self.assemblyCode.append(f"j {loopLabel}")
     self.assemblyCode.append(f"{endLabel}:")
     
+    # Imprimir salto de línea
+    self.assemblyCode.append("li $v0, 11")
+    self.assemblyCode.append("li $a0, 10")
+    self.assemblyCode.append("syscall")
+    
     
   
   def translateArithmeticOperation(self, instruction):
