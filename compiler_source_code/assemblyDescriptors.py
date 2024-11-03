@@ -115,8 +115,9 @@ class AddressDescriptor:
       self._addresses[object] = [address]
       
   def removeAddress(self, object, address):
-        
-    self._addresses[object].remove(address)
+    
+    if address in self._addresses[object]:
+      self._addresses[object].remove(address)
     
     if len(self._addresses[object]) == 0:
       del self._addresses[object]

@@ -5,7 +5,7 @@ from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType, F
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT_STR, PRINT_INT, PRINT_FLOAT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE, ASSIGN, NEG, GREATER, GREATER_EQUAL, STRICT_ASSIGN, INT_TO_STR, FLOAT_TO_STR
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT_STR, PRINT_INT, PRINT_FLOAT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE, ASSIGN, NEG, GREATER, GREATER_EQUAL, STRICT_ASSIGN, INT_TO_STR, FLOAT_TO_INT
 from antlr4 import tree
 from Offset import Offset
 from ParamsTree import ParamsTree
@@ -86,10 +86,26 @@ class IntermediateCodeGenerator():
     
   def enterProgram(self, ctx: CompiscriptParser.ProgramContext):
     if not self.continueCodeGeneration(): return
+    
+    # Guardar temporales constantes
+    
+    self.oneTemp = self.newTemp(IntType()) # Guarda 1
+    # Para convertir parte decimal a número entero. 0.860000 * decimalConversionFactorTemp = 860000
+    self.decimalConversionFactorTemp = self.newTemp(FloatType()) 
+    # Char de punto decimal
+    self.decimalPointCharTemp = self.newTemp(StringType())
 
   def exitProgram(self, ctx: CompiscriptParser.ProgramContext):
     if not self.continueCodeGeneration(): return
-    self.programCode = self.getChildrenCode(ctx)
+    self.programCode = EmptyInstruction()
+    
+    # Store de temporales constantes
+    self.programCode.concat(SingleInstruction(result=self.oneTemp, arg1=Value(1, IntType()), operator=STORE))
+    self.programCode.concat(SingleInstruction(result=self.decimalConversionFactorTemp, arg1=Value(10000000.0, FloatType()), operator=STORE))
+    self.programCode.concat(SingleInstruction(result=self.decimalPointCharTemp, arg1=Value("\".\"", StringType()), operator=STORE))
+    
+    # Concatenar código de hijos
+    self.programCode.concat(self.getChildrenCode(ctx))
 
   def enterDeclaration(self, ctx: CompiscriptParser.DeclarationContext):
     if not self.continueCodeGeneration(): return
@@ -823,6 +839,49 @@ class IntermediateCodeGenerator():
     
     firstOperand = ctx.getChild(0).addr
     
+    def convertFloatToStr(operand):
+      # Obtener parte decimal
+      decimalPart = self.newTemp(FloatType())
+      code.concat(SingleInstruction(result=decimalPart, arg1=operand, operator=MOD, arg2=self.oneTemp))
+      
+      # Obtener parte entera
+      integerPart = self.newTemp(FloatType())
+      code.concat(SingleInstruction(result=integerPart, arg1=operand, operator=MINUS, arg2=decimalPart))
+      
+      # Convertir parte decimal a entera (sigue siendo .0)
+      decimalPart = decimalPart.copy()
+      code.concat(SingleInstruction(result=decimalPart, arg1=decimalPart, operator=MULTIPLY, arg2=self.decimalConversionFactorTemp))
+      
+      # Hacer conversión de float a entero
+      decimalPartInt = decimalPart.copy()
+      integerPartInt = integerPart.copy()
+      
+      decimalPartInt.setType(IntType())
+      integerPartInt.setType(IntType())      
+      
+      code.concat(SingleInstruction(result=decimalPartInt, arg1=decimalPart, operator=FLOAT_TO_INT))
+      code.concat(SingleInstruction(result=integerPartInt, arg1=integerPart, operator=FLOAT_TO_INT))
+      
+      # Convertir int a string
+      integerAsStrTemp = self.newTemp(StringType())
+      decimalAsStrTemp = self.newTemp(StringType())
+      
+      code.concat(SingleInstruction(result=integerAsStrTemp, arg1=integerPartInt, operator=INT_TO_STR))
+      code.concat(SingleInstruction(result=decimalAsStrTemp, arg1=decimalPartInt, operator=INT_TO_STR))
+      
+      # Concatenar
+      temp = self.newTemp(StringType())
+      floatAsStrTemp = self.newTemp(StringType())
+      code.concat(SingleInstruction(result=temp, arg1=integerAsStrTemp, operator=CONCAT, arg2=self.decimalPointCharTemp))
+      code.concat(SingleInstruction(result=floatAsStrTemp, arg1=temp, operator=CONCAT, arg2=decimalAsStrTemp))
+      
+      return floatAsStrTemp
+    
+    def convertIntToStr(operand):
+      conversionTemp = self.newTemp(StringType())
+      code.concat(SingleInstruction(result=conversionTemp, arg1=firstOperand, operator=INT_TO_STR))
+      return conversionTemp
+    
     for i in range(numOperations):
       
       operatorLexeme = ctx.getChild(i * 2 + 1).getText()
@@ -842,17 +901,17 @@ class IntermediateCodeGenerator():
           
           if not firstOperand.getType().strictEqualsType(StringType):
           
-            operator = FLOAT_TO_STR if firstOperand.getType().strictEqualsType(FloatType) else INT_TO_STR
-            conversionTemp = self.newTemp(StringType())
-            code.concat(SingleInstruction(result=conversionTemp, arg1=firstOperand, operator=operator))
-            firstOperand = conversionTemp
+            if firstOperand.getType().strictEqualsType(FloatType):
+              firstOperand = convertFloatToStr(firstOperand)
+            else:
+              firstOperand = convertIntToStr(firstOperand)
           
           if not secondOperand.getType().strictEqualsType(StringType):
           
-            operator = FLOAT_TO_STR if secondOperand.getType().strictEqualsType(FloatType) else INT_TO_STR
-            conversionTemp = self.newTemp(StringType())
-            code.concat(SingleInstruction(result=conversionTemp, arg1=secondOperand, operator=operator))
-            secondOperand = conversionTemp
+            if secondOperand.getType().strictEqualsType(FloatType):
+              secondOperand = convertFloatToStr(secondOperand)
+            else:
+              secondOperand = convertIntToStr(secondOperand)
           
       elif operatorLexeme == "-":
         operation = MINUS

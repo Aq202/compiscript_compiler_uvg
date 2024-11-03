@@ -1,7 +1,7 @@
 from assemblyDescriptors import RegisterDescriptor, AddressDescriptor
 from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary
 from compoundTypes import ObjectType
-from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT, INT_TO_STR
+from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT, INT_TO_STR, FLOAT_TO_INT
 from IntermediateCodeInstruction import SingleInstruction, ConditionalInstruction
 from primitiveTypes import FloatType, IntType, StringType, BoolType
 from utils.decimalToIEEE754 import decimal_to_ieee754
@@ -217,6 +217,10 @@ class AssemblyGenerator:
       
       elif instruction.operator == INT_TO_STR:
         self.translateIntToStrOperation(instruction)
+        return
+      
+      elif instruction.operator == FLOAT_TO_INT:
+        self.translateFloatToIntOperation(instruction)
         return
 
     elif isinstance(instruction, ConditionalInstruction):
@@ -858,3 +862,30 @@ class AssemblyGenerator:
     
     self.assemblyCode.append(f"{endConvertLabel}:")
     
+    
+  def translateFloatToIntOperation(self, instruction):
+    
+    floatNumber = instruction.arg1
+    destination = instruction.result
+    
+    # Cargar número float en registro
+    floatReg = self.getValueInRegister(floatNumber)
+    
+    # Reservar espacio en el heap para int
+    memoryAddressReg = self.heapAllocate(intSize)
+    # Guardar en memoria estática la dirección del valor en el heap
+    self.assemblyCode.append(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
+      
+    # Convertir float a int
+    self.assemblyCode.append(f"cvt.w.s {floatCompilerTemporary[0]}, {floatReg}  # Convertir float a int")
+    
+    # Mover a registro int
+    intReg = self.getRegister(objectToSave=None, useFloat=False)
+    self.assemblyCode.append(f"mfc1 {intReg}, {floatCompilerTemporary[0]} # Mover int de registro f a int")
+    
+    # Guardar int en memoria (en el heap)
+    self.assemblyCode.append(f"sw {intReg}, 0({memoryAddressReg}) # Guardar int en memoria heap")
+    
+    # Actualizar descriptores
+    self.registerDescriptor.saveValueInRegister(register=intReg, value=destination)
+    self.addressDescriptor.replaceAddress(object=destination, address=intReg)

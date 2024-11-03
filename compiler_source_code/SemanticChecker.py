@@ -28,6 +28,7 @@ class SemanticChecker(CompiscriptListener):
       super().enterProgram(ctx)
       self.params.initNodeParams() # Inicializar el árbol de parámetros
 
+      return self.intermediateCodeGenerator.enterProgram(ctx)
 
     def exitProgram(self, ctx: CompiscriptParser.ProgramContext):
       super().exitProgram(ctx)
