@@ -1,7 +1,7 @@
 from assemblyDescriptors import RegisterDescriptor, AddressDescriptor
 from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary
 from compoundTypes import ObjectType
-from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT, INT_TO_STR, FLOAT_TO_INT
+from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT, INT_TO_STR, FLOAT_TO_INT, NOT
 from IntermediateCodeInstruction import SingleInstruction, ConditionalInstruction
 from primitiveTypes import FloatType, IntType, StringType, BoolType
 from utils.decimalToIEEE754 import decimal_to_ieee754
@@ -134,6 +134,7 @@ class AssemblyGenerator:
     if not isinstance(address, Register):
       
       # El valor no está en un registro, cargar de memoria
+      print("hooola",value)
       if value.strictEqualsType(FloatType):
         address = self.getRegister(objectToSave=value, useFloat=True, ignoreRegisters=ignoreRegisters) # Obtener registro flotante
         # Cargar dirrección del bloque de memoria en el heap
@@ -221,6 +222,10 @@ class AssemblyGenerator:
       
       elif instruction.operator == FLOAT_TO_INT:
         self.translateFloatToIntOperation(instruction)
+        return
+      
+      elif instruction.operator == NOT:
+        self.translateNotOperation(instruction)
         return
 
     elif isinstance(instruction, ConditionalInstruction):
@@ -893,3 +898,22 @@ class AssemblyGenerator:
     # Actualizar descriptores
     self.registerDescriptor.saveValueInRegister(register=intReg, value=destination)
     self.addressDescriptor.replaceAddress(object=destination, address=intReg)
+    
+  def translateNotOperation(self, instruction):
+    
+    value = instruction.arg1
+    destination = instruction.result
+    
+    # Obtener valor a negar en registro
+    valueReg = self.getValueInRegister(value)
+    
+    # Obtener ubicación de destino
+    destinationReg = self.getRegister(objectToSave=destination, ignoreRegisters=[valueReg])
+    
+    # Negar valor
+    self.assemblyCode.append(f"xori {destinationReg}, {valueReg}, 1  # Negar valor")
+    
+    # Actualizar descriptores para que solo destination tenga el valor
+    self.registerDescriptor.replaceValueInRegister(destinationReg, destination)
+    self.addressDescriptor.replaceAddress(destination, destinationReg)
+    

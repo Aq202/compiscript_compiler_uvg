@@ -1,11 +1,10 @@
 from antlr.CompiscriptParser import CompiscriptParser
-import uuid
 from compoundTypes import ObjectType, FunctionType, ClassType, InstanceType, ClassSelfReferenceType, FunctionOverload, SuperMethodWrapper
 from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType, FloatType, IntType
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, XOR, MOD, DIVIDE, PLUS, PRINT_STR, PRINT_INT, PRINT_FLOAT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE, ASSIGN, NEG, GREATER, GREATER_EQUAL, STRICT_ASSIGN, INT_TO_STR, FLOAT_TO_INT
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, MOD, DIVIDE, PLUS, PRINT_STR, PRINT_INT, PRINT_FLOAT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE, ASSIGN, NEG, GREATER, GREATER_EQUAL, STRICT_ASSIGN, INT_TO_STR, FLOAT_TO_INT
 from antlr4 import tree
 from Offset import Offset
 from ParamsTree import ParamsTree
@@ -1102,7 +1101,7 @@ class IntermediateCodeGenerator():
     else:
       # Operador unario not
       # 1 XOR 1 = 0, 0 XOR 1 = 1
-      ctx.code.concat(SingleInstruction(result=temp, arg1=operand, operator=XOR, arg2=Value(1, NumberType())))
+      ctx.code.concat(SingleInstruction(result=temp, arg1=operand, operator=NOT, operatorFirst=True))
       
     ctx.addr = temp
     
