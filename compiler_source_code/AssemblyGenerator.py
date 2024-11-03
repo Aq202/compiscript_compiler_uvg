@@ -685,9 +685,10 @@ class AssemblyGenerator:
       addresses[i] = self.getValueInRegister(values[i], ignoreRegisters=addresses)
       
     # Registro que va a irse desplazando a lo largo de la palabra
-    wordCopyReg = self.getRegister(objectToSave=None)
+    wordCopyReg = self.getRegister(objectToSave=None, ignoreRegisters=addresses)
     
     # Contar tamaño de strings
+    self.assemblyCode.append(f"# translateConcatOperation: concatenar dos strings {addresses[0]} y {addresses[1]}")
     self.assemblyCode.append(f"li {compilerTemporary[0]}, 0   # Contador de tamaño de ambos strings")
     for i in range(2):
       strLenLoopLabel = f"str_len_loop{i+1}_{getUniqueId()}"
@@ -770,19 +771,22 @@ class AssemblyGenerator:
     # Obtener ubicación más reciente del número
     numberAddress = self.getValueInRegister(number, ignoreRegisters=[resultAddress])
     
+    # Copiar a registro temporal el número, para que se pueda operar
+    numberReg = self.getRegister(objectToSave=None, ignoreRegisters=[resultAddress, numberAddress])
+    self.assemblyCode.append(f"move {numberReg}, {numberAddress}  # copiar número a registro para poder modificarlo")
+    
     # Guardar el divisor base 10
-    
-    
+
     handleZeroLabel = f"handle_zero_{getUniqueId()}"
     convertLoopLabel = f"convert_loop_{getUniqueId()}"
     endConvertLabel = f"end_convert_{getUniqueId()}"
     
     # Copiar inicio de string a registro temporal
-    stringPointerReg = self.getRegister(objectToSave=None, ignoreRegisters=[resultAddress, numberAddress])
+    stringPointerReg = self.getRegister(objectToSave=None, ignoreRegisters=[resultAddress, numberReg])
     self.assemblyCode.append(f"move {stringPointerReg}, {resultAddress}")
     
     # Si el número es cero, convertirlo a '0' directamente
-    self.assemblyCode.append(f"beqz {numberAddress}, {handleZeroLabel} # Si el número es cero, convertirlo a '0'")
+    self.assemblyCode.append(f"beqz {numberReg}, {handleZeroLabel} # Si el número es cero, convertirlo a '0'")
     
     # Guardar divisor base 10
     self.assemblyCode.append(f"li {compilerTemporary[0]}, 10")
@@ -791,9 +795,9 @@ class AssemblyGenerator:
     
     # Obtener digito menos significativo. 
     digitReg = compilerTemporary[1]
-    self.assemblyCode.append(f"div {numberAddress}, {compilerTemporary[0]}  # Dividir por 10")
+    self.assemblyCode.append(f"div {numberReg}, {compilerTemporary[0]}  # Dividir por 10")
     self.assemblyCode.append(f"mfhi {digitReg}  # Obtener residuo (dig individual)")
-    self.assemblyCode.append(f"mflo {numberAddress}  # Obtener cociente (num reducido)")
+    self.assemblyCode.append(f"mflo {numberReg}  # Obtener cociente (num reducido)")
     
     # Si el número es cero, no agregar char y terminar
     
@@ -802,7 +806,7 @@ class AssemblyGenerator:
     self.assemblyCode.append(f"sb {digitReg}, 0({stringPointerReg})  # Guardar caracter en string")
     self.assemblyCode.append(f"addi {stringPointerReg}, {stringPointerReg}, 1  # Avanzar a siguiente caracter en buffer")
     
-    self.assemblyCode.append(f"bne {numberAddress}, $zero, {convertLoopLabel} # Si no es cero, repetir")
+    self.assemblyCode.append(f"bne {numberReg}, $zero, {convertLoopLabel} # Si no es cero, repetir")
     
     self.assemblyCode.append(f"sb $zero, 0({stringPointerReg})  # Agregar caracter nulo al final")
     
@@ -813,7 +817,7 @@ class AssemblyGenerator:
     stringPointerBackwardReg = stringPointerReg # Se va a ir decrementando
     
     # Guardar otra copia del string, para recorrer de adelante hacia atras
-    stringPointerForwardReg = self.getRegister(objectToSave=None, ignoreRegisters=[resultAddress, stringPointerReg, numberAddress]) # Se va a ir incrementando
+    stringPointerForwardReg = self.getRegister(objectToSave=None, ignoreRegisters=[resultAddress, stringPointerReg, numberReg]) # Se va a ir incrementando
     self.assemblyCode.append(f"move {stringPointerForwardReg}, {resultAddress}")
     
     # Hacer reverse de la cadena

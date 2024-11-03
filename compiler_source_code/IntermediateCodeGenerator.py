@@ -879,7 +879,7 @@ class IntermediateCodeGenerator():
     
     def convertIntToStr(operand):
       conversionTemp = self.newTemp(StringType())
-      code.concat(SingleInstruction(result=conversionTemp, arg1=firstOperand, operator=INT_TO_STR))
+      code.concat(SingleInstruction(result=conversionTemp, arg1=operand, operator=INT_TO_STR))
       return conversionTemp
     
     for i in range(numOperations):
