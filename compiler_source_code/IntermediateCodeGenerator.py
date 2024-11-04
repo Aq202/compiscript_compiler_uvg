@@ -588,12 +588,17 @@ class IntermediateCodeGenerator():
     valueAddr = ctx.assignment().addr
     valueType = ctx.assignment().type
     ctx.addr = valueAddr
-    isInsideLoop = self.symbolTable.currentScope.isInsideLoop()
+    
+    # Verifica si entre el punto actual y la ubicación de variable existe una función, cond, loop,
+    # que pueda hacer ambigua la ejecución de la asignación
+    # Si es ambigua la asignación no puede hacerse por intercambio de registros en tiempo de compilación,
+    # sino por una copia del valor a otro registro en tiempo de ejecución
+    isExecutionAmbiguous = self.symbolTable.currentScope.isExecutionAmbiguous(elementStop=valueAddr)
     
     if objectDef is not None:
       # Si es una asignación a una variable
       objectDefCopy = objectDef.copy() # Copia de ObjectType() para preservar el tipo
-      operator = STRICT_ASSIGN if isInsideLoop else ASSIGN
+      operator = STRICT_ASSIGN if isExecutionAmbiguous else ASSIGN
       ctx.code.concat(SingleInstruction(result=objectDefCopy, arg1=valueAddr, operator=operator))
       
     elif not valueType.strictEqualsType(FunctionType): # Ignorar métodos (no se pueden asignar)
@@ -613,7 +618,7 @@ class IntermediateCodeGenerator():
         propertyPosition = Offset(thisTemp, propertyIndex * MEM_ADDR_SIZE)
         
         # Asignar valor a propiedad en CI
-        operator = STRICT_ASSIGN if isInsideLoop else ASSIGN
+        operator = STRICT_ASSIGN if isExecutionAmbiguous else ASSIGN
         ctx.code.concat(SingleInstruction(result=propertyPosition, arg1=valueAddr, operator=operator))
         
       else:

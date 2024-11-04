@@ -112,7 +112,7 @@ class AddressDescriptor:
       self._addresses[object].append(address)
 
   def replaceAddress(self, object, address):
-      self._addresses[object] = [address]
+    self._addresses[object] = [address]
       
   def removeAddress(self, object, address):
     

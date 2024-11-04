@@ -28,6 +28,7 @@ class AssemblyGenerator:
     
     print("\n\n Iniciando traducción...\n\n")
     for instruction in code:
+      self.assemblyCode.append(f"# INSTRUCTION {instruction}")
       self.translateInstruction(instruction)
       #print(yellow_text(instruction), "\n", self.registerDescriptor, self.addressDescriptor, "\n")
     
