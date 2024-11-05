@@ -10,10 +10,10 @@ class NilType(DataType):
     return self
   
   def equalsType(self, __class__):
-    return __class__ == NilType
+    return isinstance(self, __class__)
   
   def strictEqualsType(self, __class__):
-    return __class__ == NilType
+    return isinstance(self, __class__)
 
   def __eq__(self, other):
     # Sobreescribir __eq__ para que todos los objetos de NilType sean iguales

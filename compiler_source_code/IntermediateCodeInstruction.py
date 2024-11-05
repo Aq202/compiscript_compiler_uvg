@@ -99,6 +99,9 @@ class SingleInstruction(Instruction):
     if self.operator and self.result and not self.arg1 and not self.arg2:
       return f"{format(self.result)} = {self.operator}"
     
+    if self.operator and not self.arg1 and not self.arg2:
+      return f"{self.operator}"
+    
     raise Exception("Single instruction no válida para imprimir")
 class ConditionalInstruction(Instruction):
   def __init__(self, arg1, goToLabel, branchIfFalse=False, nextInstruction=None):

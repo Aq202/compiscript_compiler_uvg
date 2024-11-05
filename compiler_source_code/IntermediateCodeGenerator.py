@@ -4,7 +4,7 @@ from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType, F
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, MOD, DIVIDE, PLUS, PRINT_STR, PRINT_INT, PRINT_FLOAT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE, ASSIGN, NEG, GREATER, GREATER_EQUAL, STRICT_ASSIGN, INT_TO_STR, FLOAT_TO_INT
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, MOD, DIVIDE, PLUS, PRINT_STR, PRINT_INT, PRINT_FLOAT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE, ASSIGN, NEG, GREATER, GREATER_EQUAL, STRICT_ASSIGN, INT_TO_STR, FLOAT_TO_INT, AMBIGUOUS_BLOCK, END_AMBIGUOUS_BLOCK
 from antlr4 import tree
 from Offset import Offset
 from ParamsTree import ParamsTree
@@ -233,24 +233,24 @@ class IntermediateCodeGenerator():
     hasConditionExpression = len(ctx.expression()) > 0 and (len(ctx.expression()) == 2 or updateExpressionLimits[1] - updateExpressionLimits[0] == 1)
     hasUpdateExpression = len(ctx.expression()) > 0 and (len(ctx.expression()) == 2 or updateExpressionLimits[1] - updateExpressionLimits[0] > 1)
     
-    code = None
+    code = EmptyInstruction()
     
     if ctx.varDecl() != None or ctx.exprStmt() != None:
       # Hay una declaración (o asignación de variable), añadir su código
       initializationCode = ctx.varDecl().code if ctx.varDecl() != None else ctx.exprStmt().code
-      code = initializationCode
+      code.concat(initializationCode)
     
     # Obtener labels de inicio y fin de loop, eliminandolos del arbol de params
     currentParams = self.loopParams.removeNodeParams()
     repeatLabel = currentParams.get("repeatLabel")
     endLabel = currentParams.get("endLabel")
     
+    # Indicar que se comienza con una ejecución ambigua
+    code.concat(SingleInstruction(operator=AMBIGUOUS_BLOCK))
+    
     # Agregar etiqueta de inicio de loop
     repeatLabelInstruction = SingleInstruction(operator=LABEL, arg1=repeatLabel)
-    if code == None:
-      code = repeatLabelInstruction
-    else:
-      code.concat(repeatLabelInstruction)
+    code.concat(repeatLabelInstruction)
       
     
     # Realizar la evaluación de la condición (si la hay)
@@ -281,6 +281,9 @@ class IntermediateCodeGenerator():
     # Etiqueta de fin
     code.concat(SingleInstruction(operator=LABEL, arg1=endLabel))
     
+    # Indicar fin de ejecución ambigua
+    code.concat(SingleInstruction(operator=END_AMBIGUOUS_BLOCK))
+    
     ctx.code = code
     
 
@@ -298,19 +301,33 @@ class IntermediateCodeGenerator():
     
     ctx.code = expressionNode.code # Agregar código necesario para evaluar la expresión
     
+    # Indicar que a continuación es una ejecución ambigua (if statement)
+    ctx.code.concat(SingleInstruction(operator=AMBIGUOUS_BLOCK))
+    
     skipLabel = self.newLabel()
     endLabel = self.newLabel()
     
     # Si la condición es falsa, saltar al final
     conditionalCode = ConditionalInstruction(arg1=expression, branchIfFalse=True, goToLabel=skipLabel)
     conditionalCode.concat(statementCode)
+    
+    # Indicar fin de ejecución ambigua del if
+    conditionalCode.concat(SingleInstruction(operator=END_AMBIGUOUS_BLOCK))
+    
     conditionalCode.concat(SingleInstruction(operator=GOTO, arg1=endLabel)) # Evitar else (si existe)
     conditionalCode.concat(SingleInstruction(operator=LABEL, arg1=skipLabel)) # Evitar if statement
     
     # Si hay else, ejecutarlo
     if hasElseStatement:
+      
+      # Indicar que a continuación es una ejecución ambigua (else statement)
+      conditionalCode.concat(SingleInstruction(operator=AMBIGUOUS_BLOCK))
+      
       elseStatementCode = ctx.statement(1).code
       conditionalCode.concat(elseStatementCode)
+      
+      # Indicar fin de ejecución ambigua del else
+      conditionalCode.concat(SingleInstruction(operator=END_AMBIGUOUS_BLOCK))
       
     # Etiqueta de fin
     conditionalCode.concat(SingleInstruction(operator=LABEL, arg1=endLabel))
@@ -376,8 +393,11 @@ class IntermediateCodeGenerator():
     repeatLabel = currentParams.get("repeatLabel")
     endLabel = currentParams.get("endLabel")
     
+    # Indicar que se comienza con una ejecución ambigua
+    whileCode = SingleInstruction(operator=AMBIGUOUS_BLOCK)
+    
     # Label para repetir loop
-    whileCode = SingleInstruction(operator=LABEL, arg1=repeatLabel)
+    whileCode.concat(SingleInstruction(operator=LABEL, arg1=repeatLabel))
     
     # Realizar la evaluación de la expresión
     whileCode.concat(expressionNode.code)
@@ -393,6 +413,9 @@ class IntermediateCodeGenerator():
     
     # Etiqueta de fin
     whileCode.concat(SingleInstruction(operator=LABEL, arg1=endLabel))
+    
+    # Indicar fin de ejecución ambigua
+    whileCode.concat(SingleInstruction(operator=END_AMBIGUOUS_BLOCK))
     
     ctx.code = whileCode
 
@@ -427,9 +450,11 @@ class IntermediateCodeGenerator():
   def exitBlock(self, ctx: CompiscriptParser.BlockContext):
     if not self.continueCodeGeneration(): return
     
-    paramsCode = None
+    paramsCode = EmptyInstruction()
+    blockCode = EmptyInstruction()
     
-    scope = self.symbolTable.currentScope
+    scope = self.symbolTable.currentScope 
+    
     if scope.type == ScopeType.FUNCTION or scope.type == ScopeType.CONSTRUCTOR:
       
       functionDef = scope.reference
@@ -456,29 +481,25 @@ class IntermediateCodeGenerator():
         
         # Guardar código intermedio de asignación de parámetros
         instruction = SingleInstruction(result=param, operator=GET_ARG, arg1=str(paramsCount + i))
-        if paramsCode is None:
-          paramsCode = instruction
-        else:
-          paramsCode.concat(instruction)
+        paramsCode.concat(instruction)
 
-      ctx.code = paramsCode
+      blockCode.concat(paramsCode)
       
       # Añadir código de hijos (concatenado a declaración de parámetros)
-      if ctx.code == None:
-        ctx.code = self.getChildrenCode(ctx)
-      else:
-        ctx.code.concat(self.getChildrenCode(ctx))
+      blockCode.concat(self.getChildrenCode(ctx))
       
       # Si se sale de una función, se genera un return nil por defecto
-      ctx.code.concat(SingleInstruction(operator=RETURN, arg1=Value(None, NilType())))
+      blockCode.concat(SingleInstruction(operator=RETURN, arg1=Value(None, NilType())))
       
       # Indicar fin de función
-      ctx.code.concat(SingleInstruction(operator=END_FUNCTION, arg1=functionDef))
+      blockCode.concat(SingleInstruction(operator=END_FUNCTION, arg1=functionDef))
 
     else:
       # Si no es una función, concatenar código de hijos
-      ctx.code = self.getChildrenCode(ctx)
-      
+      blockCode.concat(self.getChildrenCode(ctx))
+    
+    ctx.code = blockCode
+    
   def enterFunAnon(self, ctx: CompiscriptParser.FunAnonContext, functionDef: FunctionType):
     if not self.continueCodeGeneration(): return
 
@@ -593,7 +614,7 @@ class IntermediateCodeGenerator():
     # que pueda hacer ambigua la ejecución de la asignación
     # Si es ambigua la asignación no puede hacerse por intercambio de registros en tiempo de compilación,
     # sino por una copia del valor a otro registro en tiempo de ejecución
-    isExecutionAmbiguous = self.symbolTable.currentScope.isExecutionAmbiguous(elementStop=valueAddr)
+    isExecutionAmbiguous = self.symbolTable.currentScope.isExecutionAmbiguous(elementStop=objectDef)
     
     if objectDef is not None:
       # Si es una asignación a una variable
@@ -618,7 +639,7 @@ class IntermediateCodeGenerator():
         propertyPosition = Offset(thisTemp, propertyIndex * MEM_ADDR_SIZE)
         
         # Asignar valor a propiedad en CI
-        operator = STRICT_ASSIGN if isExecutionAmbiguous else ASSIGN
+        operator = STRICT_ASSIGN if isAmbiguous else ASSIGN
         ctx.code.concat(SingleInstruction(result=propertyPosition, arg1=valueAddr, operator=operator))
         
       else:
@@ -657,6 +678,8 @@ class IntermediateCodeGenerator():
     trueLabel = self.newLabel()
     endLabel = self.newLabel()
     
+    operandsLen = len(ctx.logic_and())
+    
     for child in ctx.children:
       if isinstance(child, CompiscriptParser.Logic_andContext):
         
@@ -666,7 +689,14 @@ class IntermediateCodeGenerator():
         else:
           code.concat(child.code)
           
+          # Cerrar el bloque ambiguo. Solo se aplica para los operandos 2 o más (los que son ambiguos)
+          code.concat(SingleInstruction(operator=END_AMBIGUOUS_BLOCK))
+          
         operand1 = child.addr
+        
+        if operandsLen > 1:
+          # El resto de operaciones son ambiguas, abrir bloque ambiguo para siguiente bloque
+          code.concat(SingleInstruction(operator=AMBIGUOUS_BLOCK))
         
         # Si el operando es true, saltar al final y no seguir evaluando
         conditionalCode = ConditionalInstruction(arg1=operand1,  branchIfFalse=False, goToLabel=trueLabel)
@@ -708,6 +738,8 @@ class IntermediateCodeGenerator():
     falseLabel = self.newLabel()
     endLabel = self.newLabel()
     
+    operandsLen = len(ctx.equality())
+    
     for child in ctx.children:
       if isinstance(child, CompiscriptParser.EqualityContext):
         
@@ -716,8 +748,15 @@ class IntermediateCodeGenerator():
           code = child.code
         else:
           code.concat(child.code)
+          
+          # Cerrar el bloque ambiguo. Solo se aplica para los operandos 2 o más (los que son ambiguos)
+          code.concat(SingleInstruction(operator=END_AMBIGUOUS_BLOCK))
         
         operand1 = child.addr
+        
+        if operandsLen > 1:
+          # El resto de operaciones son ambiguas, abrir bloque ambiguo para siguiente bloque
+          code.concat(SingleInstruction(operator=AMBIGUOUS_BLOCK))
 
         # Si el operando es false, saltar al final y no seguir evaluando
         conditionalCode = ConditionalInstruction(arg1=operand1, branchIfFalse=True, goToLabel=falseLabel)

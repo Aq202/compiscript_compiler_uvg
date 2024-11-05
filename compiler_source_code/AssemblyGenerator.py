@@ -1,7 +1,7 @@
 from assemblyDescriptors import RegisterDescriptor, AddressDescriptor
 from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary
 from compoundTypes import ObjectType
-from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT, INT_TO_STR, FLOAT_TO_INT, NOT
+from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT, INT_TO_STR, FLOAT_TO_INT, NOT, AMBIGUOUS_BLOCK, END_AMBIGUOUS_BLOCK
 from IntermediateCodeInstruction import SingleInstruction, ConditionalInstruction
 from primitiveTypes import FloatType, IntType, StringType, BoolType, NilType
 from utils.decimalToIEEE754 import decimal_to_ieee754
@@ -28,7 +28,7 @@ class AssemblyGenerator:
     
     print("\n\n Iniciando traducción...\n\n")
     for instruction in code:
-      self.assemblyCode.append(f"# INSTRUCTION {instruction}")
+      self.addAssemblyCode(f"# INSTRUCTION {instruction}")
       self.translateInstruction(instruction)
       #print(yellow_text(instruction), "\n", self.registerDescriptor, self.addressDescriptor, "\n")
     
@@ -40,6 +40,11 @@ class AssemblyGenerator:
     self.addAutoNumberMemoryAllocFunction()
     
     self.assemblyCode += self.functionsCode
+  
+  def addAssemblyCode(self, code):
+    self.assemblyCode.append(code)
+    line = len(self.assemblyCode)
+    return line
   
   def getCode(self):
     return self.assemblyCode
@@ -59,33 +64,66 @@ class AssemblyGenerator:
     functionLabel = self.autoNumberMemoryAlloc
     skipMemoryAllocLabel = f"skip_auto_number_memory_alloc_{getUniqueId()}"
     
-    self.assemblyCode.append(f".text")
-    self.assemblyCode.append(f".globl {functionLabel}")
-    self.assemblyCode.append(f"{functionLabel}:")
+    self.addAssemblyCode(f".text")
+    self.addAssemblyCode(f".globl {functionLabel}")
+    self.addAssemblyCode(f"{functionLabel}:")
     
     # Verificar si existe un bloque de memoria en el heap, si no crearlo antes de leer
-    self.assemblyCode.append(f"bne $a0, $zero, {skipMemoryAllocLabel} # Si no es cero, ya hay memoria asignada")
+    self.addAssemblyCode(f"bne $a0, $zero, {skipMemoryAllocLabel} # Si no es cero, ya hay memoria asignada")
         
     # Reservar memoria en el heap
-    self.assemblyCode.append(f"li $v0, 9")
-    self.assemblyCode.append(f"move $a0, $a2")
-    self.assemblyCode.append("syscall")
+    self.addAssemblyCode(f"li $v0, 9")
+    self.addAssemblyCode(f"move $a0, $a2")
+    self.addAssemblyCode("syscall")
     
     # Guardar dirección de memoria en la memoria estática
-    self.assemblyCode.append(f"sw $v0, 0($a1)")   
+    self.addAssemblyCode(f"sw $v0, 0($a1)")   
     
     # Return. V0 ya contiene la dirección del bloque creado en el heap
-    self.assemblyCode.append(f"jr $ra")
-    self.assemblyCode.append(f"nop")
+    self.addAssemblyCode(f"jr $ra")
+    self.addAssemblyCode(f"nop")
     
-    self.assemblyCode.append(f"{skipMemoryAllocLabel}:")
-    self.assemblyCode.append(f"move $v0, $a0")
+    self.addAssemblyCode(f"{skipMemoryAllocLabel}:")
+    self.addAssemblyCode(f"move $v0, $a0")
     
     # Return
-    self.assemblyCode.append(f"jr $ra")
-    self.assemblyCode.append(f"nop")
+    self.addAssemblyCode(f"jr $ra")
+    self.addAssemblyCode(f"nop")
+    
+  
+  
+  def saveRegisterValueInMemory(self, register, object):
+    """
+    Guarda el valor de un registro en memoria, en la ubicación correspondiente al objeto.
+    Si es un number guarda el valor del numero en el heap, es decir, objectStatic->heapAddress->storeValue.
+    
+    Modifica valores de $a0, $a1, $a2, $v0.
+    """
     
     
+    # Guardar valor de registro en memoria
+    objectBasePointer = self.getBasePointer(object)
+    objectOffset = object.offset
+    
+    if object.equalsType((IntType, BoolType, FloatType, NilType)):
+      # Obtener dirección de memoria para guardar el valor (en el heap)
+      self.addAssemblyCode(f"lw $a0, {objectOffset}({objectBasePointer}) # Guardar inicio de bloque mem de heap en registro")
+      
+      # Llamar a función para verificar si existe un bloque de memoria en el heap, si no crearlo antes de leer
+      self.addAssemblyCode(f"move $a1, {objectBasePointer}")
+      self.addAssemblyCode(f"addi $a1, $a1, {objectOffset}")
+      self.addAssemblyCode(f"li $a2, {intSize if object.strictEqualsType(IntType) else floatSize}")
+      self.addAssemblyCode(f"jal {self.autoNumberMemoryAlloc}")
+      
+      if object.strictEqualsType(FloatType):
+        self.addAssemblyCode(f"s.s {register}, 0($v0)")
+      else:
+        self.addAssemblyCode(f"sw {register}, 0($v0)")
+    
+    elif object.strictEqualsType(StringType):
+      # Lo que se guarda en el registro, es el inicio del bloque de memoria de la cadena
+      # Guardar en memoria estática dicha dirección
+      self.addAssemblyCode(f"sw {register}, {objectOffset}({objectBasePointer}) # Guardar inicio de string")
     
     
   def getRegister(self, objectToSave=None, useTemp=False, useFloat=False, useFloatTemp=False, ignoreRegisters=[]):
@@ -125,29 +163,7 @@ class AssemblyGenerator:
     # Guardar el valor actual del registro menos usado
     for object in tuple(registers[minRegister]):
 
-      # Guardar valor de registro en memoria
-      objectBasePointer = self.getBasePointer(object)
-      objectOffset = object.offset
-      
-      if object.equalsType((IntType, BoolType, FloatType, NilType)):
-        # Obtener dirección de memoria para guardar el valor (en el heap)
-        self.assemblyCode.append(f"lw $a0, {objectOffset}({objectBasePointer}) # Guardar inicio de bloque mem de heap en registro")
-        
-        # Llamar a función para verificar si existe un bloque de memoria en el heap, si no crearlo antes de leer
-        self.assemblyCode.append(f"move $a1, {objectBasePointer}")
-        self.assemblyCode.append(f"addi $a1, $a1, {objectOffset}")
-        self.assemblyCode.append(f"li $a2, {intSize if object.strictEqualsType(IntType) else floatSize}")
-        self.assemblyCode.append(f"jal {self.autoNumberMemoryAlloc}")
-        
-        if object.strictEqualsType(FloatType):
-          self.assemblyCode.append(f"s.s {minRegister}, 0($v0)")
-        else:
-          self.assemblyCode.append(f"sw {minRegister}, 0($v0)")
-      
-      elif object.strictEqualsType(StringType):
-        # Lo que se guarda en el registro, es el inicio del bloque de memoria de la cadena
-        # Guardar en memoria estática dicha dirección
-        self.assemblyCode.append(f"sw {minRegister}, {objectOffset}({objectBasePointer})")
+      self.saveRegisterValueInMemory(minRegister, object)
       
       # Actualizar descriptores
       self.registerDescriptor.removeValueFromRegister(register=minRegister, value=object)
@@ -159,15 +175,15 @@ class AssemblyGenerator:
   
   def generateInitCode(self):
     
-    self.assemblyCode.append(".text")
-    self.assemblyCode.append(".globl main")
-    self.assemblyCode.append("main:")
-    self.assemblyCode.append("li $gp, 0x10010000") # cargar dirección de gp
+    self.addAssemblyCode(".text")
+    self.addAssemblyCode(".globl main")
+    self.addAssemblyCode("main:")
+    self.addAssemblyCode("li $gp, 0x10010000") # cargar dirección de gp
     
   def generateProgramExitCode(self):
     
-    self.assemblyCode.append("li $v0, 10")
-    self.assemblyCode.append("syscall")
+    self.addAssemblyCode("li $v0, 10")
+    self.addAssemblyCode("syscall")
     
   def getBasePointer(self, object):
     """
@@ -199,28 +215,42 @@ class AssemblyGenerator:
       if value.strictEqualsType(FloatType):
         address = self.getRegister(objectToSave=value, useFloat=True, ignoreRegisters=ignoreRegisters) # Obtener registro flotante
         # Cargar dirrección del bloque de memoria en el heap
-        self.assemblyCode.append(f"lw {compilerTemporary[0]}, {value.offset}({self.getBasePointer(value)})  # cargar addr de heap en registro (getValueInRegister:float)")
+        self.addAssemblyCode(f"lw {compilerTemporary[0]}, {value.offset}({self.getBasePointer(value)})  # cargar addr de heap en registro (getValueInRegister:float)")
         # Cargar valor final
-        self.assemblyCode.append(f"l.s {address}, 0({compilerTemporary[0]})")
+        self.addAssemblyCode(f"l.s {address}, 0({compilerTemporary[0]})")
         
       elif value.strictEqualsType(StringType):
         
         address = self.getRegister(objectToSave=value, ignoreRegisters=ignoreRegisters) # Obtener registro entero
         # Cargar dirrección del bloque de memoria en el heap
-        self.assemblyCode.append(f"lw {address}, {value.offset}({self.getBasePointer(value)}) # cargar addr de heap en registro (getValueInRegister:str)")
+        self.addAssemblyCode(f"lw {address}, {value.offset}({self.getBasePointer(value)}) # cargar addr de heap en registro (getValueInRegister:str)")
         
       else: # Tratar com int
         address = self.getRegister(objectToSave=value, ignoreRegisters=ignoreRegisters) # Obtener registro entero
         # Cargar dirrección del bloque de memoria en el heap
-        self.assemblyCode.append(f"lw {compilerTemporary[0]}, {value.offset}({self.getBasePointer(value)})  # cargar addr de heap en registro (getValueInRegister:int)")
+        self.addAssemblyCode(f"lw {compilerTemporary[0]}, {value.offset}({self.getBasePointer(value)})  # cargar addr de heap en registro (getValueInRegister:int)")
         # Cargar valor final
-        self.assemblyCode.append(f"lw {address}, 0({compilerTemporary[0]})")
+        self.addAssemblyCode(f"lw {address}, 0({compilerTemporary[0]}) # NOTA")
         
       # Actualizar descriptores con el valor recién cargado
       self.addressDescriptor.insertAddress(value, address)
       self.registerDescriptor.saveValueInRegister(address, value)
       
     return address
+  
+  def freeAllRegisters(self):
+    
+    usedRegisters = self.registerDescriptor.getUsedRegisters()
+    
+    for register in usedRegisters:
+      
+      for object in tuple(self.registerDescriptor.getValuesInRegister(register)):
+        
+        self.saveRegisterValueInMemory(register, object)
+        
+        # Actualizar descriptores
+        self.registerDescriptor.removeValueFromRegister(register=register, value=object)
+        self.addressDescriptor.replaceAddress(object, address=object)
   
   def translateInstruction(self, instruction):
     
@@ -288,6 +318,10 @@ class AssemblyGenerator:
       elif instruction.operator == NOT:
         self.translateNotOperation(instruction)
         return
+      
+      elif instruction.operator in (AMBIGUOUS_BLOCK, END_AMBIGUOUS_BLOCK):
+        self.freeAllRegisters()
+        return
 
     elif isinstance(instruction, ConditionalInstruction):
       self.translateConditionalJumpInstruction(instruction)
@@ -299,9 +333,9 @@ class AssemblyGenerator:
     """
     Reserva size cantidad de bytes en memoria dinámica y retorna (en texto) el registro que contiene la dirección.
     """
-    self.assemblyCode.append(f"li $v0, 9")
-    self.assemblyCode.append(f"li $a0, {size}")
-    self.assemblyCode.append("syscall")
+    self.addAssemblyCode(f"li $v0, 9")
+    self.addAssemblyCode(f"li $a0, {size}")
+    self.addAssemblyCode("syscall")
     
     return "$v0"
     
@@ -316,11 +350,11 @@ class AssemblyGenerator:
       memoryAddressReg = self.heapAllocate(intSize)
       
       # Guardar en memoria estática la dirección del valor en el heap
-      self.assemblyCode.append(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)}) # Int store {str(destination)}")
+      self.addAssemblyCode(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)}) # Int store {str(destination)}")
       
       # Guardar en registro el valor final
       register = self.getRegister(objectToSave=destination)
-      self.assemblyCode.append(f"li {register}, {value}")
+      self.addAssemblyCode(f"li {register}, {value}")
 
       # Guardar en descriptores que la variable está en el registro
       self.registerDescriptor.replaceValueInRegister(register, destination)
@@ -331,18 +365,18 @@ class AssemblyGenerator:
       memoryAddressReg = self.heapAllocate(floatSize)
       
       # Mover dirección de memoria creada a registro seguro
-      self.assemblyCode.append(f"move {compilerTemporary[1]}, {memoryAddressReg}")
+      self.addAssemblyCode(f"move {compilerTemporary[1]}, {memoryAddressReg}")
       memoryAddressReg = compilerTemporary[1]
       
       # Guardar el valor en memoria
-      self.assemblyCode.append(f"li {compilerTemporary[0]}, {decimal_to_ieee754(value)} # Float store")
-      self.assemblyCode.append(f"sw {compilerTemporary[0]}, 0({memoryAddressReg})")
+      self.addAssemblyCode(f"li {compilerTemporary[0]}, {decimal_to_ieee754(value)} # Float store")
+      self.addAssemblyCode(f"sw {compilerTemporary[0]}, 0({memoryAddressReg})")
       
       register = self.getRegister(objectToSave=destination, useFloat=True)
-      self.assemblyCode.append(f"l.s {register}, 0({memoryAddressReg})")
+      self.addAssemblyCode(f"l.s {register}, 0({memoryAddressReg})")
       
       # Guardar en memoria estática la dirección del valor en el heap
-      self.assemblyCode.append(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
+      self.addAssemblyCode(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
       
       # Guardar en descriptores que la variable está en el registro y en memoria
       self.registerDescriptor.replaceValueInRegister(register, destination)
@@ -356,24 +390,24 @@ class AssemblyGenerator:
       memoryAddressReg = self.heapAllocate(size)
       
       # Mover dirección de memoria creada a registro seguro
-      self.assemblyCode.append(f"move {compilerTemporary[1]}, {memoryAddressReg}")
+      self.addAssemblyCode(f"move {compilerTemporary[1]}, {memoryAddressReg}")
       memoryAddressReg = compilerTemporary[1]
       
       # Agregar código assembly para guardar cada caracter en memoria
       for i, char in enumerate(value[1:-1]):
-        self.assemblyCode.append(f"li {compilerTemporary[0]}, {ord(char)}   # Caracter {char}")
-        self.assemblyCode.append(f"sb {compilerTemporary[0]}, {i}({memoryAddressReg})")
+        self.addAssemblyCode(f"li {compilerTemporary[0]}, {ord(char)}   # Caracter {char}")
+        self.addAssemblyCode(f"sb {compilerTemporary[0]}, {i}({memoryAddressReg})")
         
       # Agregar caracter nulo al final
-      self.assemblyCode.append(f"li {compilerTemporary[0]}, 0   # Caracter nulo")
-      self.assemblyCode.append(f"sb {compilerTemporary[0]}, {size - 1}({memoryAddressReg})")
+      self.addAssemblyCode(f"li {compilerTemporary[0]}, 0   # Caracter nulo")
+      self.addAssemblyCode(f"sb {compilerTemporary[0]}, {size - 1}({memoryAddressReg})")
       
       # Guardar en registro la dirección de memoria del inicio del string
       register = self.getRegister(objectToSave=destination)
-      self.assemblyCode.append(f"move {register}, {memoryAddressReg}  # Guardar dirección de memoria del string")
+      self.addAssemblyCode(f"move {register}, {memoryAddressReg}  # Guardar dirección de memoria del string")
       
       # Guardar en memoria estática la dirección del valor en el heap
-      self.assemblyCode.append(f"sw {register}, {destination.offset}({self.getBasePointer(destination)})")
+      self.addAssemblyCode(f"sw {register}, {destination.offset}({self.getBasePointer(destination)})")
       
       # Actualizar descriptores
       self.registerDescriptor.saveValueInRegister(register, value=destination)
@@ -388,15 +422,15 @@ class AssemblyGenerator:
     
     # Obtener ubicación más reciente    
     address = self.getValueInRegister(value)
-    self.assemblyCode.append(f"move $a0, {address}")
+    self.addAssemblyCode(f"move $a0, {address}")
     
-    self.assemblyCode.append(f"li $v0, 1")
-    self.assemblyCode.append("syscall")
+    self.addAssemblyCode(f"li $v0, 1")
+    self.addAssemblyCode("syscall")
     
     # Imprimir salto de línea
-    self.assemblyCode.append("li $v0, 11")
-    self.assemblyCode.append("li $a0, 10")
-    self.assemblyCode.append("syscall")
+    self.addAssemblyCode("li $v0, 11")
+    self.addAssemblyCode("li $a0, 10")
+    self.addAssemblyCode("syscall")
     
   def translateFloatPrint(self, instruction):
     
@@ -404,15 +438,15 @@ class AssemblyGenerator:
     
     # Obtener ubicación más reciente    
     address = self.getValueInRegister(value)
-    self.assemblyCode.append(f"mov.s $f12, {address}")
+    self.addAssemblyCode(f"mov.s $f12, {address}")
         
-    self.assemblyCode.append(f"li $v0, 2")
-    self.assemblyCode.append("syscall")
+    self.addAssemblyCode(f"li $v0, 2")
+    self.addAssemblyCode("syscall")
     
     # Imprimir salto de línea
-    self.assemblyCode.append("li $v0, 11")
-    self.assemblyCode.append("li $a0, 10")
-    self.assemblyCode.append("syscall")
+    self.addAssemblyCode("li $v0, 11")
+    self.addAssemblyCode("li $a0, 10")
+    self.addAssemblyCode("syscall")
 
   def translateStringPrint(self, instruction):
     
@@ -425,20 +459,20 @@ class AssemblyGenerator:
     loopLabel = f"print_string_{getUniqueId()}"
     endLabel = f"end_print_string_{getUniqueId()}"
     
-    self.assemblyCode.append(f"move {compilerTemporary[0]}, {address} # Guardar dirección de memoria del string")
-    self.assemblyCode.append(f"{loopLabel}:   # Imprimir string")
-    self.assemblyCode.append(f"lb $a0, 0({compilerTemporary[0]})")
-    self.assemblyCode.append(f"beqz $a0, {endLabel}")
-    self.assemblyCode.append(f"li $v0, 11")
-    self.assemblyCode.append(f"syscall")
-    self.assemblyCode.append(f"addi {compilerTemporary[0]}, {compilerTemporary[0]}, 1 # Siguiente caracter")
-    self.assemblyCode.append(f"j {loopLabel}")
-    self.assemblyCode.append(f"{endLabel}:")
+    self.addAssemblyCode(f"move {compilerTemporary[0]}, {address} # Guardar dirección de memoria del string")
+    self.addAssemblyCode(f"{loopLabel}:   # Imprimir string")
+    self.addAssemblyCode(f"lb $a0, 0({compilerTemporary[0]})")
+    self.addAssemblyCode(f"beqz $a0, {endLabel}")
+    self.addAssemblyCode(f"li $v0, 11")
+    self.addAssemblyCode(f"syscall")
+    self.addAssemblyCode(f"addi {compilerTemporary[0]}, {compilerTemporary[0]}, 1 # Siguiente caracter")
+    self.addAssemblyCode(f"j {loopLabel}")
+    self.addAssemblyCode(f"{endLabel}:")
     
     # Imprimir salto de línea
-    self.assemblyCode.append("li $v0, 11")
-    self.assemblyCode.append("li $a0, 10")
-    self.assemblyCode.append("syscall")
+    self.addAssemblyCode("li $v0, 11")
+    self.addAssemblyCode("li $a0, 10")
+    self.addAssemblyCode("syscall")
     
     
   
@@ -456,7 +490,7 @@ class AssemblyGenerator:
       size = floatSize if floatOperation else intSize
       memoryAddressReg = self.heapAllocate(size)
       # Guardar en memoria estática la dirección del valor en el heap
-      self.assemblyCode.append(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
+      self.addAssemblyCode(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
       
       
       # Cargar valores en registros
@@ -470,8 +504,8 @@ class AssemblyGenerator:
         for i in range(2):
           if not values[i].strictEqualsType(FloatType):
             
-            self.assemblyCode.append(f"mtc1 {addresses[i]} {floatCompilerTemporary[i]}")
-            self.assemblyCode.append(f"cvt.s.w {floatCompilerTemporary[i]}, {floatCompilerTemporary[i]}")
+            self.addAssemblyCode(f"mtc1 {addresses[i]} {floatCompilerTemporary[i]}")
+            self.addAssemblyCode(f"cvt.s.w {floatCompilerTemporary[i]}, {floatCompilerTemporary[i]}")
             addresses[i] = floatCompilerTemporary[i]
       
       operationMap = {
@@ -485,26 +519,26 @@ class AssemblyGenerator:
       # Realizar la operación
       if not floatOperation:
         resultReg = self.getRegister(objectToSave=destination, ignoreRegisters=addresses)
-        self.assemblyCode.append(f"{operationMap[operation][0]} {resultReg}, {addresses[0]}, {addresses[1]}")
+        self.addAssemblyCode(f"{operationMap[operation][0]} {resultReg}, {addresses[0]}, {addresses[1]}")
         
       elif operation != MOD:
         resultReg = self.getRegister(objectToSave=destination, useFloat=True, ignoreRegisters=addresses)
-        self.assemblyCode.append(f"{operationMap[operation][1]} {resultReg}, {addresses[0]}, {addresses[1]}")
+        self.addAssemblyCode(f"{operationMap[operation][1]} {resultReg}, {addresses[0]}, {addresses[1]}")
         
       else: # MOD float 
         
         modRegTemp = self.getRegister(objectToSave=None, useFloat=True, ignoreRegisters=addresses)
         # División (float)
-        self.assemblyCode.append(f"div.s {modRegTemp}, {addresses[0]}, {addresses[1]}")
+        self.addAssemblyCode(f"div.s {modRegTemp}, {addresses[0]}, {addresses[1]}")
         # Convertir cociente a entero (truncamiento)
-        self.assemblyCode.append(f"floor.w.s {modRegTemp}, {modRegTemp}")
+        self.addAssemblyCode(f"floor.w.s {modRegTemp}, {modRegTemp}")
         # Convertir a float de nuevo
-        self.assemblyCode.append(f"cvt.s.w {modRegTemp}, {modRegTemp}")
+        self.addAssemblyCode(f"cvt.s.w {modRegTemp}, {modRegTemp}")
         # mult parte entera * divisor
-        self.assemblyCode.append(f"mul.s {modRegTemp}, {modRegTemp}, {addresses[1]}")
+        self.addAssemblyCode(f"mul.s {modRegTemp}, {modRegTemp}, {addresses[1]}")
         # calcular modulo (dividendo - parte entera * divisor)
         resultReg = self.getRegister(objectToSave=destination, useFloat=True, ignoreRegisters=addresses)
-        self.assemblyCode.append(f"sub.s {resultReg}, {addresses[0]}, {modRegTemp}")
+        self.addAssemblyCode(f"sub.s {resultReg}, {addresses[0]}, {modRegTemp}")
         
       # Actualizar descriptores
       self.registerDescriptor.replaceValueInRegister(resultReg, destination)
@@ -536,11 +570,17 @@ class AssemblyGenerator:
     value = instruction.arg1
     result = instruction.result
     
-    address = self.getValueInRegister(value)
-    resultAddress = self.getValueInRegister(result, ignoreRegisters=[address])
+    valueReg = self.getValueInRegister(value)    
     
-    self.assemblyCode.append(f"move {resultAddress}, {address}")
+    self.saveRegisterValueInMemory(register=valueReg, object=result)    
     
+    # Eliminar valor de registro en descriptores
+    resultPrevAddr = self.addressDescriptor.getAddress(result)
+    if isinstance(resultPrevAddr, Register):
+      # Si era un registro, eliminar el valor anterior de este
+      self.registerDescriptor.removeValueFromRegister(register=resultPrevAddr, value=result)
+      
+    self.addressDescriptor.replaceAddress(object=result, address=result) # Eliminar registros de address de result
     
   def translateNegativeOperation(self, instruction):
     
@@ -556,15 +596,15 @@ class AssemblyGenerator:
     size = floatSize if floatOperation else intSize
     memoryAddressReg = self.heapAllocate(size)
     # Guardar en memoria estática la dirección del valor en el heap
-    self.assemblyCode.append(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
+    self.addAssemblyCode(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
     
     # Realizar la operación
     if floatOperation:
       resultReg = self.getRegister(objectToSave=destination, useFloat=True, ignoreRegisters=[address])
-      self.assemblyCode.append(f"neg.s {resultReg}, {address}")
+      self.addAssemblyCode(f"neg.s {resultReg}, {address}")
     else:
       resultReg = self.getRegister(objectToSave=destination, ignoreRegisters=[address])
-      self.assemblyCode.append(f"neg {resultReg}, {address}")
+      self.addAssemblyCode(f"neg {resultReg}, {address}")
     
     # Actualizar descriptores
     self.registerDescriptor.replaceValueInRegister(register=resultReg, value=destination)
@@ -583,7 +623,7 @@ class AssemblyGenerator:
     # Reservar ubicación en heap correspondiente al resultado
     memoryAddressReg = self.heapAllocate(intSize)
     # Guardar en memoria estática la dirección del valor en el heap
-    self.assemblyCode.append(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
+    self.addAssemblyCode(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
     
     # Cargar valores en registros
     addresses = [None, None]
@@ -596,8 +636,8 @@ class AssemblyGenerator:
       for i in range(2):
         if not values[i].strictEqualsType(FloatType):
           
-          self.assemblyCode.append(f"mtc1 {addresses[i]} {floatCompilerTemporary[i]}")
-          self.assemblyCode.append(f"cvt.s.w {floatCompilerTemporary[i]}, {floatCompilerTemporary[i]}")
+          self.addAssemblyCode(f"mtc1 {addresses[i]} {floatCompilerTemporary[i]}")
+          self.addAssemblyCode(f"cvt.s.w {floatCompilerTemporary[i]}, {floatCompilerTemporary[i]}")
           addresses[i] = floatCompilerTemporary[i]
     
     operationMap = {
@@ -612,7 +652,7 @@ class AssemblyGenerator:
     # Realizar la operación
     if not floatOperation:
       resultReg = self.getRegister(objectToSave=destination, ignoreRegisters=addresses)
-      self.assemblyCode.append(f"{operationMap[operation][0]} {resultReg}, {addresses[0]}, {addresses[1]} # Comparación entera")
+      self.addAssemblyCode(f"{operationMap[operation][0]} {resultReg}, {addresses[0]}, {addresses[1]} # Comparación entera")
       
     else:
       # Operación float
@@ -624,22 +664,22 @@ class AssemblyGenerator:
       falseLabel = f"false_float_comp_{getUniqueId()}"
       endLabel = f"end_float_comp_{getUniqueId()}"
       
-      self.assemblyCode.append(f"{operationMap[operation][1]} {addresses[0]}, {addresses[1]} # Comparación flotante")
+      self.addAssemblyCode(f"{operationMap[operation][1]} {addresses[0]}, {addresses[1]} # Comparación flotante")
       if not invert:
-        self.assemblyCode.append(f"bc1f {falseLabel}") # Saltar si no se cumple la condición
+        self.addAssemblyCode(f"bc1f {falseLabel}") # Saltar si no se cumple la condición
       else:
-        self.assemblyCode.append(f"bc1t {falseLabel}") # saltar si se cumple la condición (está negado)
+        self.addAssemblyCode(f"bc1t {falseLabel}") # saltar si se cumple la condición (está negado)
       
       # Si se cumple la condición
-      self.assemblyCode.append(f"li {resultReg}, 1")
-      self.assemblyCode.append(f"j {endLabel}")
+      self.addAssemblyCode(f"li {resultReg}, 1")
+      self.addAssemblyCode(f"j {endLabel}")
       
       # No se cumple
-      self.assemblyCode.append(f"{falseLabel}:")
-      self.assemblyCode.append(f"li {resultReg}, 0")
+      self.addAssemblyCode(f"{falseLabel}:")
+      self.addAssemblyCode(f"li {resultReg}, 0")
       
       # Fin
-      self.assemblyCode.append(f"{endLabel}:")
+      self.addAssemblyCode(f"{endLabel}:")
       
     # Actualizar descriptores
     self.registerDescriptor.replaceValueInRegister(resultReg, destination)
@@ -653,7 +693,7 @@ class AssemblyGenerator:
     # Reservar ubicación en heap correspondiente al resultado
     memoryAddressReg = self.heapAllocate(intSize)
     # Guardar en memoria estática la dirección del valor en el heap
-    self.assemblyCode.append(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
+    self.addAssemblyCode(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
 
     # Cargar valores en registros
     addresses = [None, None]
@@ -668,61 +708,61 @@ class AssemblyGenerator:
     resultReg = self.getRegister(objectToSave=destination, ignoreRegisters=addresses)
     
     # Loop de comparación de caracteres
-    self.assemblyCode.append(f"{repeatLabel}:")
+    self.addAssemblyCode(f"{repeatLabel}:")
         
     # Cargar byte
     for i in range(2):
-      self.assemblyCode.append(f"lb {compilerTemporary[i]}, 0({addresses[i]})")
+      self.addAssemblyCode(f"lb {compilerTemporary[i]}, 0({addresses[i]})")
       
-    self.assemblyCode.append(f"bne {compilerTemporary[0]}, {compilerTemporary[1]}, {charDiffLabel}  # Comparar bytes")
+    self.addAssemblyCode(f"bne {compilerTemporary[0]}, {compilerTemporary[1]}, {charDiffLabel}  # Comparar bytes")
     
     # Si son iguales y llegamos al final, las cadenas son iguales
-    self.assemblyCode.append(f"beqz {compilerTemporary[0]}, {equalLabel}  # Si ambos son null, son iguales")
+    self.addAssemblyCode(f"beqz {compilerTemporary[0]}, {equalLabel}  # Si ambos son null, son iguales")
     
     # Avanzar a siguiente char
-    self.assemblyCode.append(f"addi {addresses[0]}, {addresses[0]}, 1")
-    self.assemblyCode.append(f"addi {addresses[1]}, {addresses[1]}, 1")
+    self.addAssemblyCode(f"addi {addresses[0]}, {addresses[0]}, 1")
+    self.addAssemblyCode(f"addi {addresses[1]}, {addresses[1]}, 1")
     
     # Repetir
-    self.assemblyCode.append(f"j {repeatLabel}")
+    self.addAssemblyCode(f"j {repeatLabel}")
     
     # Diferencia de caracteres
-    self.assemblyCode.append(f"{charDiffLabel}:")
+    self.addAssemblyCode(f"{charDiffLabel}:")
     
     if operation == EQUAL:
       # Si la operación era igual, ya que un char es distinto, result es false
-      self.assemblyCode.append(f"li {resultReg}, 0")
-      self.assemblyCode.append(f"j {endLabel}")
+      self.addAssemblyCode(f"li {resultReg}, 0")
+      self.addAssemblyCode(f"j {endLabel}")
     
     elif operation == NOT_EQUAL:
       # Si la operación era no igual, ya que un char es distinto, result es true
-      self.assemblyCode.append(f"li {resultReg}, 1")
-      self.assemblyCode.append(f"j {endLabel}")
+      self.addAssemblyCode(f"li {resultReg}, 1")
+      self.addAssemblyCode(f"j {endLabel}")
       
     else:
 
       # Calcular la diferencia entre chars
-      self.assemblyCode.append(f"sub {compilerTemporary[0]}, {compilerTemporary[0]}, {compilerTemporary[1]}")
+      self.addAssemblyCode(f"sub {compilerTemporary[0]}, {compilerTemporary[0]}, {compilerTemporary[1]}")
     
       if operation in (LESS, LESS_EQUAL):
         # Si la operación es menor, para ser true debe ser negativo
-        self.assemblyCode.append(f"slt {resultReg}, {compilerTemporary[0]}, $zero")
+        self.addAssemblyCode(f"slt {resultReg}, {compilerTemporary[0]}, $zero")
       else:
         # Si la operación es mayor, para ser true debe ser positivo
-        self.assemblyCode.append(f"sgt {resultReg}, {compilerTemporary[0]}, $zero")
+        self.addAssemblyCode(f"sgt {resultReg}, {compilerTemporary[0]}, $zero")
     
     # Saltar al final
-    self.assemblyCode.append(f"j {endLabel}")
+    self.addAssemblyCode(f"j {endLabel}")
     
     # Si las cadenas son iguales
-    self.assemblyCode.append(f"{equalLabel}:")
+    self.addAssemblyCode(f"{equalLabel}:")
     if operation in (EQUAL, LESS_EQUAL, GREATER_EQUAL):
-      self.assemblyCode.append(f"li {resultReg}, 1")
+      self.addAssemblyCode(f"li {resultReg}, 1")
     else:
-      self.assemblyCode.append(f"li {resultReg}, 0")
+      self.addAssemblyCode(f"li {resultReg}, 0")
       
     # Fin
-    self.assemblyCode.append(f"{endLabel}:")
+    self.addAssemblyCode(f"{endLabel}:")
     
     # Actualizar descriptores
     self.registerDescriptor.replaceValueInRegister(resultReg, destination)
@@ -739,19 +779,19 @@ class AssemblyGenerator:
     
     if branchIfFalse:
       # Saltar si es falso
-      self.assemblyCode.append(f"beqz {address}, {goToLabel}")
+      self.addAssemblyCode(f"beqz {address}, {goToLabel}")
     else:
       # Saltar si es verdadero
-      self.assemblyCode.append(f"bne {address}, $zero, {goToLabel}")
+      self.addAssemblyCode(f"bne {address}, $zero, {goToLabel}")
   
   def translateJumpInstruction(self, instruction):
     
     goToLabel = instruction.arg1
-    self.assemblyCode.append(f"j {goToLabel}")
+    self.addAssemblyCode(f"j {goToLabel}")
     
   def translateLabelInstruction(self, instruction):
     label = instruction.arg1
-    self.assemblyCode.append(f"{label}:")
+    self.addAssemblyCode(f"{label}:")
     
   def translateConcatOperation(self, instruction):
     
@@ -767,51 +807,51 @@ class AssemblyGenerator:
     wordCopyReg = self.getRegister(objectToSave=None, ignoreRegisters=addresses)
     
     # Contar tamaño de strings
-    self.assemblyCode.append(f"# translateConcatOperation: concatenar dos strings {addresses[0]} y {addresses[1]}")
-    self.assemblyCode.append(f"li {compilerTemporary[0]}, 0   # Contador de tamaño de ambos strings")
+    self.addAssemblyCode(f"# translateConcatOperation: concatenar dos strings {addresses[0]} y {addresses[1]}")
+    self.addAssemblyCode(f"li {compilerTemporary[0]}, 0   # Contador de tamaño de ambos strings")
     for i in range(2):
       strLenLoopLabel = f"str_len_loop{i+1}_{getUniqueId()}"
       strLenEndLabel = f"str_len_end{i+1}_{getUniqueId()}"
       
       # Copiar inicio de string a temporal, para que el original no se modifique
-      self.assemblyCode.append(f"move {wordCopyReg}, {addresses[i]}   # Copiar dirección de memoria del string {i+1}")
+      self.addAssemblyCode(f"move {wordCopyReg}, {addresses[i]}   # Copiar dirección de memoria del string {i+1}")
       
-      self.assemblyCode.append(f"{strLenLoopLabel}:")
+      self.addAssemblyCode(f"{strLenLoopLabel}:")
       # Cargar byte actual
-      self.assemblyCode.append(f"lb {compilerTemporary[1]}, 0({wordCopyReg})")
+      self.addAssemblyCode(f"lb {compilerTemporary[1]}, 0({wordCopyReg})")
       
       # Si es nulo, terminar
-      self.assemblyCode.append(f"beqz {compilerTemporary[1]}, {strLenEndLabel}")
+      self.addAssemblyCode(f"beqz {compilerTemporary[1]}, {strLenEndLabel}")
       
       # Incrementar longitud
-      self.assemblyCode.append(f"addi {compilerTemporary[0]}, {compilerTemporary[0]}, 1")
+      self.addAssemblyCode(f"addi {compilerTemporary[0]}, {compilerTemporary[0]}, 1")
       
       # Avanzar al siguiente byte
-      self.assemblyCode.append(f"addi {wordCopyReg}, {wordCopyReg}, 1")
+      self.addAssemblyCode(f"addi {wordCopyReg}, {wordCopyReg}, 1")
       
       # Repetir loop con string actual
-      self.assemblyCode.append(f"j {strLenLoopLabel}")
+      self.addAssemblyCode(f"j {strLenLoopLabel}")
       
-      self.assemblyCode.append(f"{strLenEndLabel}:")
+      self.addAssemblyCode(f"{strLenEndLabel}:")
       
     # Sumar 1 por el caracter nulo
-    self.assemblyCode.append(f"addi {compilerTemporary[0]}, {compilerTemporary[0]}, 1")
+    self.addAssemblyCode(f"addi {compilerTemporary[0]}, {compilerTemporary[0]}, 1")
       
     # Reservar memoria para el nuevo string
-    self.assemblyCode.append(f"li $v0, 9")
-    self.assemblyCode.append(f"move $a0, {compilerTemporary[0]}   # Reservar en heap tamanio total de ambos strings")
-    self.assemblyCode.append("syscall")
+    self.addAssemblyCode(f"li $v0, 9")
+    self.addAssemblyCode(f"move $a0, {compilerTemporary[0]}   # Reservar en heap tamanio total de ambos strings")
+    self.addAssemblyCode("syscall")
     
     # Guardar en registro resultante, la dirección de memoria del nuevo string
     resultAddress = self.getRegister(objectToSave=destination, ignoreRegisters=[wordCopyReg]+ addresses)
-    self.assemblyCode.append(f"move {resultAddress}, $v0")
+    self.addAssemblyCode(f"move {resultAddress}, $v0")
     
     # Actualizar descriptores, indicar que el inicio del string resultante está en el registro
     self.addressDescriptor.replaceAddress(destination, resultAddress)
     self.registerDescriptor.saveValueInRegister(register=resultAddress, value=destination)
     
     # Copiar inicio de strings a temporal, el cuál se irá desplazando
-    self.assemblyCode.append(f"move {compilerTemporary[0]}, {resultAddress} # Copiar en temp inicio de string resultante")
+    self.addAssemblyCode(f"move {compilerTemporary[0]}, {resultAddress} # Copiar en temp inicio de string resultante")
       
     # Iniciar a copiar strings
     loopCopyLabels = (f"copy_string1_{getUniqueId()}", f"copy_string2_{getUniqueId()}")
@@ -819,18 +859,18 @@ class AssemblyGenerator:
   
     for i in range(2):
       
-      self.assemblyCode.append(f"move {wordCopyReg}, {addresses[i]}   # Copiar dirección de memoria del string {i+1}")
-      self.assemblyCode.append(f"{loopCopyLabels[i]}:")
-      self.assemblyCode.append(f"lb {compilerTemporary[1]}, 0({wordCopyReg}) # Cargar byte actual a copiar de string {i+1}")
-      self.assemblyCode.append(f"beqz {compilerTemporary[1]}, {endCopyLabels[i]}  # Si es nulo, terminar string {i+1}")
-      self.assemblyCode.append(f"sb {compilerTemporary[1]}, 0({compilerTemporary[0]}) # Copiar byte a string resultante")
-      self.assemblyCode.append(f"addi {wordCopyReg}, {wordCopyReg}, 1")
-      self.assemblyCode.append(f"addi {compilerTemporary[0]}, {compilerTemporary[0]}, 1")
-      self.assemblyCode.append(f"j {loopCopyLabels[i]}   # continuar copiando string {i+1}")
-      self.assemblyCode.append(f"{endCopyLabels[i]}:  # Fin de copia de string {i+1}")
+      self.addAssemblyCode(f"move {wordCopyReg}, {addresses[i]}   # Copiar dirección de memoria del string {i+1}")
+      self.addAssemblyCode(f"{loopCopyLabels[i]}:")
+      self.addAssemblyCode(f"lb {compilerTemporary[1]}, 0({wordCopyReg}) # Cargar byte actual a copiar de string {i+1}")
+      self.addAssemblyCode(f"beqz {compilerTemporary[1]}, {endCopyLabels[i]}  # Si es nulo, terminar string {i+1}")
+      self.addAssemblyCode(f"sb {compilerTemporary[1]}, 0({compilerTemporary[0]}) # Copiar byte a string resultante")
+      self.addAssemblyCode(f"addi {wordCopyReg}, {wordCopyReg}, 1")
+      self.addAssemblyCode(f"addi {compilerTemporary[0]}, {compilerTemporary[0]}, 1")
+      self.addAssemblyCode(f"j {loopCopyLabels[i]}   # continuar copiando string {i+1}")
+      self.addAssemblyCode(f"{endCopyLabels[i]}:  # Fin de copia de string {i+1}")
     
     # Agregar caracter nulo al final
-    self.assemblyCode.append(f"sb $zero, 0({compilerTemporary[0]})")
+    self.addAssemblyCode(f"sb $zero, 0({compilerTemporary[0]})")
   
   def translateIntToStrOperation(self, instruction):
     
@@ -841,12 +881,12 @@ class AssemblyGenerator:
     memoryAddressReg = self.heapAllocate(intAsStrSize)
     
     # Cambiar memoryAddress a registro seguro
-    self.assemblyCode.append(f"move {compilerTemporary[0]}, {memoryAddressReg}")
+    self.addAssemblyCode(f"move {compilerTemporary[0]}, {memoryAddressReg}")
     memoryAddressReg = compilerTemporary[0]
     
     # Guardar en registro la dirección de memoria del inicio del string
     resultAddress = self.getRegister(objectToSave=destination)
-    self.assemblyCode.append(f"move {resultAddress}, {memoryAddressReg}")
+    self.addAssemblyCode(f"move {resultAddress}, {memoryAddressReg}")
     
     self.addressDescriptor.replaceAddress(destination, resultAddress)
     self.registerDescriptor.saveValueInRegister(resultAddress, value=destination)
@@ -856,7 +896,7 @@ class AssemblyGenerator:
     
     # Copiar a registro temporal el número, para que se pueda operar
     numberReg = self.getRegister(objectToSave=None, ignoreRegisters=[resultAddress, numberAddress])
-    self.assemblyCode.append(f"move {numberReg}, {numberAddress}  # copiar número a registro para poder modificarlo")
+    self.addAssemblyCode(f"move {numberReg}, {numberAddress}  # copiar número a registro para poder modificarlo")
     
     # Guardar el divisor base 10
 
@@ -866,66 +906,66 @@ class AssemblyGenerator:
     
     # Copiar inicio de string a registro temporal
     stringPointerReg = self.getRegister(objectToSave=None, ignoreRegisters=[resultAddress, numberReg])
-    self.assemblyCode.append(f"move {stringPointerReg}, {resultAddress}")
+    self.addAssemblyCode(f"move {stringPointerReg}, {resultAddress}")
     
     # Si el número es cero, convertirlo a '0' directamente
-    self.assemblyCode.append(f"beqz {numberReg}, {handleZeroLabel} # Si el número es cero, convertirlo a '0'")
+    self.addAssemblyCode(f"beqz {numberReg}, {handleZeroLabel} # Si el número es cero, convertirlo a '0'")
     
     # Guardar divisor base 10
-    self.assemblyCode.append(f"li {compilerTemporary[0]}, 10")
+    self.addAssemblyCode(f"li {compilerTemporary[0]}, 10")
     
-    self.assemblyCode.append(f"{convertLoopLabel}:")
+    self.addAssemblyCode(f"{convertLoopLabel}:")
     
     # Obtener digito menos significativo. 
     digitReg = compilerTemporary[1]
-    self.assemblyCode.append(f"div {numberReg}, {compilerTemporary[0]}  # Dividir por 10")
-    self.assemblyCode.append(f"mfhi {digitReg}  # Obtener residuo (dig individual)")
-    self.assemblyCode.append(f"mflo {numberReg}  # Obtener cociente (num reducido)")
+    self.addAssemblyCode(f"div {numberReg}, {compilerTemporary[0]}  # Dividir por 10")
+    self.addAssemblyCode(f"mfhi {digitReg}  # Obtener residuo (dig individual)")
+    self.addAssemblyCode(f"mflo {numberReg}  # Obtener cociente (num reducido)")
     
     # Si el número es cero, no agregar char y terminar
     
     # Convertir digito a caracter
-    self.assemblyCode.append(f"addi {digitReg}, {digitReg}, 48  # Convertir a caracter ASCII")
-    self.assemblyCode.append(f"sb {digitReg}, 0({stringPointerReg})  # Guardar caracter en string")
-    self.assemblyCode.append(f"addi {stringPointerReg}, {stringPointerReg}, 1  # Avanzar a siguiente caracter en buffer")
+    self.addAssemblyCode(f"addi {digitReg}, {digitReg}, 48  # Convertir a caracter ASCII")
+    self.addAssemblyCode(f"sb {digitReg}, 0({stringPointerReg})  # Guardar caracter en string")
+    self.addAssemblyCode(f"addi {stringPointerReg}, {stringPointerReg}, 1  # Avanzar a siguiente caracter en buffer")
     
-    self.assemblyCode.append(f"bne {numberReg}, $zero, {convertLoopLabel} # Si no es cero, repetir")
+    self.addAssemblyCode(f"bne {numberReg}, $zero, {convertLoopLabel} # Si no es cero, repetir")
     
-    self.assemblyCode.append(f"sb $zero, 0({stringPointerReg})  # Agregar caracter nulo al final")
+    self.addAssemblyCode(f"sb $zero, 0({stringPointerReg})  # Agregar caracter nulo al final")
     
     # Reverse loop
     
     # StringBufferReg está al final del string + 1 (caracter nulo)
-    self.assemblyCode.append(f"subi {stringPointerReg}, {stringPointerReg}, 1  # Retroceder a último caracter")
+    self.addAssemblyCode(f"subi {stringPointerReg}, {stringPointerReg}, 1  # Retroceder a último caracter")
     stringPointerBackwardReg = stringPointerReg # Se va a ir decrementando
     
     # Guardar otra copia del string, para recorrer de adelante hacia atras
     stringPointerForwardReg = self.getRegister(objectToSave=None, ignoreRegisters=[resultAddress, stringPointerReg, numberReg]) # Se va a ir incrementando
-    self.assemblyCode.append(f"move {stringPointerForwardReg}, {resultAddress}")
+    self.addAssemblyCode(f"move {stringPointerForwardReg}, {resultAddress}")
     
     # Hacer reverse de la cadena
     
     reverseLoopLabel = f"reverse_loop_{getUniqueId()}"
     
-    self.assemblyCode.append(f"{reverseLoopLabel}:")
+    self.addAssemblyCode(f"{reverseLoopLabel}:")
     
     # Si los punteros se cruzan, terminar
-    self.assemblyCode.append(f"bgeu {stringPointerForwardReg}, {stringPointerBackwardReg}, {endConvertLabel} # Si puntero forward es igual o mayor que backward, terminar")
+    self.addAssemblyCode(f"bgeu {stringPointerForwardReg}, {stringPointerBackwardReg}, {endConvertLabel} # Si puntero forward es igual o mayor que backward, terminar")
     
     # Cargar chars
-    self.assemblyCode.append(f"lb {compilerTemporary[0]}, 0({stringPointerForwardReg})  # Cargar char de adelante")
-    self.assemblyCode.append(f"lb {compilerTemporary[1]}, 0({stringPointerBackwardReg})  # Cargar char de atras")
+    self.addAssemblyCode(f"lb {compilerTemporary[0]}, 0({stringPointerForwardReg})  # Cargar char de adelante")
+    self.addAssemblyCode(f"lb {compilerTemporary[1]}, 0({stringPointerBackwardReg})  # Cargar char de atras")
     
     # Guardar chars intercambiados
-    self.assemblyCode.append(f"sb {compilerTemporary[1]}, 0({stringPointerForwardReg})  # Guardar char de adelante")
-    self.assemblyCode.append(f"sb {compilerTemporary[0]}, 0({stringPointerBackwardReg})  # Guardar char de atras")
+    self.addAssemblyCode(f"sb {compilerTemporary[1]}, 0({stringPointerForwardReg})  # Guardar char de adelante")
+    self.addAssemblyCode(f"sb {compilerTemporary[0]}, 0({stringPointerBackwardReg})  # Guardar char de atras")
     
     # Avanzar y retroceder punteros
-    self.assemblyCode.append(f"addi {stringPointerForwardReg}, {stringPointerForwardReg}, 1  # Avanzar puntero de adelante")
-    self.assemblyCode.append(f"subi {stringPointerBackwardReg}, {stringPointerBackwardReg}, 1  # Retroceder puntero de atras")
+    self.addAssemblyCode(f"addi {stringPointerForwardReg}, {stringPointerForwardReg}, 1  # Avanzar puntero de adelante")
+    self.addAssemblyCode(f"subi {stringPointerBackwardReg}, {stringPointerBackwardReg}, 1  # Retroceder puntero de atras")
     
     # Repetir loop
-    self.assemblyCode.append(f"j {reverseLoopLabel}")
+    self.addAssemblyCode(f"j {reverseLoopLabel}")
     
     
     
@@ -935,19 +975,19 @@ class AssemblyGenerator:
     
     
     # Terminar
-    self.assemblyCode.append(f"j {endConvertLabel}")
+    self.addAssemblyCode(f"j {endConvertLabel}")
     
     # Handle zero
-    self.assemblyCode.append(f"{handleZeroLabel}:")
-    self.assemblyCode.append(f"li {compilerTemporary[0]}, 48  # Convertir '0' a ASCII")
-    self.assemblyCode.append(f"sb {compilerTemporary[0]}, 0({stringPointerReg})  # Guardar '0' en string")
+    self.addAssemblyCode(f"{handleZeroLabel}:")
+    self.addAssemblyCode(f"li {compilerTemporary[0]}, 48  # Convertir '0' a ASCII")
+    self.addAssemblyCode(f"sb {compilerTemporary[0]}, 0({stringPointerReg})  # Guardar '0' en string")
     
     # Agregar nulo luego de cero
-    self.assemblyCode.append(f"addi {stringPointerReg}, {stringPointerReg}, 1  # Avanzar a siguiente caracter en buffer")
-    self.assemblyCode.append(f"sb $zero, 0({stringPointerReg})  # Agregar caracter nulo al final")
+    self.addAssemblyCode(f"addi {stringPointerReg}, {stringPointerReg}, 1  # Avanzar a siguiente caracter en buffer")
+    self.addAssemblyCode(f"sb $zero, 0({stringPointerReg})  # Agregar caracter nulo al final")
     
     
-    self.assemblyCode.append(f"{endConvertLabel}:")
+    self.addAssemblyCode(f"{endConvertLabel}:")
     
     
   def translateFloatToIntOperation(self, instruction):
@@ -961,17 +1001,17 @@ class AssemblyGenerator:
     # Reservar espacio en el heap para int
     memoryAddressReg = self.heapAllocate(intSize)
     # Guardar en memoria estática la dirección del valor en el heap
-    self.assemblyCode.append(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
+    self.addAssemblyCode(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
       
     # Convertir float a int
-    self.assemblyCode.append(f"cvt.w.s {floatCompilerTemporary[0]}, {floatReg}  # Convertir float a int")
+    self.addAssemblyCode(f"cvt.w.s {floatCompilerTemporary[0]}, {floatReg}  # Convertir float a int")
     
     # Mover a registro int
     intReg = self.getRegister(objectToSave=None, useFloat=False)
-    self.assemblyCode.append(f"mfc1 {intReg}, {floatCompilerTemporary[0]} # Mover int de registro f a int")
+    self.addAssemblyCode(f"mfc1 {intReg}, {floatCompilerTemporary[0]} # Mover int de registro f a int")
     
     # Guardar int en memoria (en el heap)
-    self.assemblyCode.append(f"sw {intReg}, 0({memoryAddressReg}) # Guardar int en memoria heap")
+    self.addAssemblyCode(f"sw {intReg}, 0({memoryAddressReg}) # Guardar int en memoria heap")
     
     # Actualizar descriptores
     self.registerDescriptor.saveValueInRegister(register=intReg, value=destination)
@@ -989,7 +1029,7 @@ class AssemblyGenerator:
     destinationReg = self.getRegister(objectToSave=destination, ignoreRegisters=[valueReg])
     
     # Negar valor
-    self.assemblyCode.append(f"xori {destinationReg}, {valueReg}, 1  # Negar valor")
+    self.addAssemblyCode(f"xori {destinationReg}, {valueReg}, 1  # Negar valor")
     
     # Actualizar descriptores para que solo destination tenga el valor
     self.registerDescriptor.replaceValueInRegister(destinationReg, destination)

@@ -354,8 +354,6 @@ class Scope:
       if elementStop is not None:
         if elementStop.name in scope.elements and scope.elements[elementStop.name] == elementStop:
           return False
-        if elementStop.name in scope.objectInheritances and scope.objectInheritances[elementStop.name] == elementStop:
-          return False
         if elementStop.name in scope.temporaries and scope.temporaries[elementStop.name] == elementStop:
           return False
 

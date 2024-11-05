@@ -47,6 +47,15 @@ class RegisterDescriptor:
     
     return freeRegisters
   
+  def getUsedRegisters(self):
+      
+      usedRegisters = []
+      for register in self._registers:
+        if len(self._registers[register]) > 0:
+          usedRegisters.append(register)
+      
+      return usedRegisters
+  
   def getRegistersByType(self, type):
     registers = dict()
     
@@ -61,6 +70,12 @@ class RegisterDescriptor:
       raise Exception(f"El registro {register} no existe.")
     
     self._registers[register] = set()
+    
+  def getValuesInRegister(self, register):
+    if register not in self._registers:
+      raise Exception(f"El registro {register} no existe.")
+    
+    return self._registers[register]
 
   def __str__(self) -> str:
     res = "\nRegister Descriptor:\n"
