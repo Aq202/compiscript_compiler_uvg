@@ -24,6 +24,8 @@ class IntermediateCodeGenerator():
     self.loopParams = ParamsTree() # Almacena labels de inicio y fin de loops
     self.thisReferenceParams = ParamsTree() # Almacena referencias a this en métodos
     
+    self.insideFor = False # Indica si se está dentro de un ciclo for, para todos sus hijos
+    
     self.programCode = None
   
   def continueCodeGeneration(self):
@@ -157,7 +159,16 @@ class IntermediateCodeGenerator():
     
     else:
       expressionAddr = expressionNode.addr
-      ctx.code.concat(SingleInstruction(result=objectDefCopy, arg1=expressionAddr, operator=ASSIGN))
+      
+      # Verifica si entre el punto actual y la ubicación de variable existe una función, cond, loop,
+      # que pueda hacer ambigua la ejecución de la asignación
+      # Si es ambigua la asignación no puede hacerse por intercambio de registros en tiempo de compilación,
+      # sino por una copia del valor a la dirección de memoria de la variable
+      isExecutionAmbiguous = self.symbolTable.currentScope.isExecutionAmbiguous(elementStop=objectDef) \
+        or self.insideFor
+      
+      operator = STRICT_ASSIGN if isExecutionAmbiguous else ASSIGN
+      ctx.code.concat(SingleInstruction(result=objectDefCopy, arg1=expressionAddr, operator=operator))
     
     ctx.addr = objectDefCopy
       
@@ -208,6 +219,8 @@ class IntermediateCodeGenerator():
   def enterForStmt(self, ctx: CompiscriptParser.ForStmtContext):
     if not self.continueCodeGeneration(): return
     
+    self.insideFor = True
+    
     # Se guaran en el nodo los labels de inicio y fin de loop
     repeatLabel = self.newLabel()
     endLabel = self.newLabel()
@@ -219,6 +232,8 @@ class IntermediateCodeGenerator():
 
   def exitForStmt(self, ctx: CompiscriptParser.ForStmtContext):
     if not self.continueCodeGeneration(): return
+    
+    self.insideFor = False
     
     # Determinar posición de último ; y ), que son los limites de la expresión de actualización
     updateExpressionLimits = [None, None]
@@ -613,8 +628,9 @@ class IntermediateCodeGenerator():
     # Verifica si entre el punto actual y la ubicación de variable existe una función, cond, loop,
     # que pueda hacer ambigua la ejecución de la asignación
     # Si es ambigua la asignación no puede hacerse por intercambio de registros en tiempo de compilación,
-    # sino por una copia del valor a otro registro en tiempo de ejecución
-    isExecutionAmbiguous = self.symbolTable.currentScope.isExecutionAmbiguous(elementStop=objectDef)
+    # sino por una copia del valor a la dirección de memoria de la variable
+    isExecutionAmbiguous = self.symbolTable.currentScope.isExecutionAmbiguous(elementStop=objectDef) \
+      or self.insideFor
     
     if objectDef is not None:
       # Si es una asignación a una variable
@@ -639,8 +655,7 @@ class IntermediateCodeGenerator():
         propertyPosition = Offset(thisTemp, propertyIndex * MEM_ADDR_SIZE)
         
         # Asignar valor a propiedad en CI
-        operator = STRICT_ASSIGN if isAmbiguous else ASSIGN
-        ctx.code.concat(SingleInstruction(result=propertyPosition, arg1=valueAddr, operator=operator))
+        ctx.code.concat(SingleInstruction(result=propertyPosition, arg1=valueAddr, operator=STRICT_ASSIGN))
         
       else:
         
@@ -653,7 +668,7 @@ class IntermediateCodeGenerator():
         propertyPosition = Offset(instanceAddr, propertyIndex * MEM_ADDR_SIZE)
         
         # Asignar valor a propiedad en CI
-        ctx.code.concat(SingleInstruction(result=propertyPosition, arg1=valueAddr, operator=ASSIGN))
+        ctx.code.concat(SingleInstruction(result=propertyPosition, arg1=valueAddr, operator=STRICT_ASSIGN))
       
 
 
