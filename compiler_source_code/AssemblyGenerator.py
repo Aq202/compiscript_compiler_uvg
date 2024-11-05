@@ -1,9 +1,9 @@
 from assemblyDescriptors import RegisterDescriptor, AddressDescriptor
 from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary
 from compoundTypes import ObjectType
-from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT, INT_TO_STR, FLOAT_TO_INT, NOT, AMBIGUOUS_BLOCK, END_AMBIGUOUS_BLOCK
+from IntermediateCodeTokens import STATIC_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT, INT_TO_STR, FLOAT_TO_INT, NOT, REGISTER_FREE, GHOST_REGISTER_FREE
 from IntermediateCodeInstruction import SingleInstruction, ConditionalInstruction
-from primitiveTypes import FloatType, IntType, StringType, BoolType, NilType
+from primitiveTypes import FloatType, IntType, StringType, BoolType, NilType, NumberType
 from utils.decimalToIEEE754 import decimal_to_ieee754
 from utils.consoleColors import yellow_text
 from utils.getUniqueId import getUniqueId
@@ -28,7 +28,7 @@ class AssemblyGenerator:
     
     print("\n\n Iniciando traducción...\n\n")
     for instruction in code:
-      self.addAssemblyCode(f"# INSTRUCTION {instruction}")
+      self.addAssemblyCode(f"nop # INSTRUCTION {instruction}")
       self.translateInstruction(instruction)
       #print(yellow_text(instruction), "\n", self.registerDescriptor, self.addressDescriptor, "\n")
     
@@ -105,14 +105,14 @@ class AssemblyGenerator:
     objectBasePointer = self.getBasePointer(object)
     objectOffset = object.offset
     
-    if object.equalsType((IntType, BoolType, FloatType, NilType)):
+    if object.equalsType((IntType, BoolType, FloatType, NumberType, NilType)):
       # Obtener dirección de memoria para guardar el valor (en el heap)
       self.addAssemblyCode(f"lw $a0, {objectOffset}({objectBasePointer}) # Guardar inicio de bloque mem de heap en registro")
       
       # Llamar a función para verificar si existe un bloque de memoria en el heap, si no crearlo antes de leer
       self.addAssemblyCode(f"move $a1, {objectBasePointer}")
       self.addAssemblyCode(f"addi $a1, $a1, {objectOffset}")
-      self.addAssemblyCode(f"li $a2, {intSize if object.strictEqualsType(IntType) else floatSize}")
+      self.addAssemblyCode(f"li $a2, {floatSize if object.strictEqualsType(FloatType) else intSize}")
       self.addAssemblyCode(f"jal {self.autoNumberMemoryAlloc}")
       
       if object.strictEqualsType(FloatType):
@@ -215,7 +215,7 @@ class AssemblyGenerator:
       if value.strictEqualsType(FloatType):
         address = self.getRegister(objectToSave=value, useFloat=True, ignoreRegisters=ignoreRegisters) # Obtener registro flotante
         # Cargar dirrección del bloque de memoria en el heap
-        self.addAssemblyCode(f"lw {compilerTemporary[0]}, {value.offset}({self.getBasePointer(value)})  # cargar addr de heap en registro (getValueInRegister:float)")
+        self.addAssemblyCode(f"lw {compilerTemporary[0]}, {value.offset}({self.getBasePointer(value)})  # cargar addr de heap de float {value}")
         # Cargar valor final
         self.addAssemblyCode(f"l.s {address}, 0({compilerTemporary[0]})")
         
@@ -223,12 +223,12 @@ class AssemblyGenerator:
         
         address = self.getRegister(objectToSave=value, ignoreRegisters=ignoreRegisters) # Obtener registro entero
         # Cargar dirrección del bloque de memoria en el heap
-        self.addAssemblyCode(f"lw {address}, {value.offset}({self.getBasePointer(value)}) # cargar addr de heap en registro (getValueInRegister:str)")
+        self.addAssemblyCode(f"lw {address}, {value.offset}({self.getBasePointer(value)}) # cargar addr de heap str {value}")
         
       else: # Tratar com int
         address = self.getRegister(objectToSave=value, ignoreRegisters=ignoreRegisters) # Obtener registro entero
         # Cargar dirrección del bloque de memoria en el heap
-        self.addAssemblyCode(f"lw {compilerTemporary[0]}, {value.offset}({self.getBasePointer(value)})  # cargar addr de heap en registro (getValueInRegister:int)")
+        self.addAssemblyCode(f"lw {compilerTemporary[0]}, {value.offset}({self.getBasePointer(value)})  # cargar addr de heap int {value}")
         # Cargar valor final
         self.addAssemblyCode(f"lw {address}, 0({compilerTemporary[0]}) # NOTA")
         
@@ -238,7 +238,7 @@ class AssemblyGenerator:
       
     return address
   
-  def freeAllRegisters(self):
+  def freeAllRegisters(self, updateDescriptors=True):
     
     usedRegisters = self.registerDescriptor.getUsedRegisters()
     
@@ -249,8 +249,9 @@ class AssemblyGenerator:
         self.saveRegisterValueInMemory(register, object)
         
         # Actualizar descriptores
-        self.registerDescriptor.removeValueFromRegister(register=register, value=object)
-        self.addressDescriptor.replaceAddress(object, address=object)
+        if updateDescriptors:
+          self.registerDescriptor.removeValueFromRegister(register=register, value=object)
+          self.addressDescriptor.replaceAddress(object, address=object)
   
   def translateInstruction(self, instruction):
     
@@ -319,8 +320,12 @@ class AssemblyGenerator:
         self.translateNotOperation(instruction)
         return
       
-      elif instruction.operator in (AMBIGUOUS_BLOCK, END_AMBIGUOUS_BLOCK):
+      elif instruction.operator == REGISTER_FREE:
         self.freeAllRegisters()
+        return
+      
+      elif instruction.operator == GHOST_REGISTER_FREE:
+        self.freeAllRegisters(updateDescriptors=False)
         return
 
     elif isinstance(instruction, ConditionalInstruction):

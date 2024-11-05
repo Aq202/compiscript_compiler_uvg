@@ -4,7 +4,7 @@ from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType, F
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, MOD, DIVIDE, PLUS, PRINT_STR, PRINT_INT, PRINT_FLOAT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE, ASSIGN, NEG, GREATER, GREATER_EQUAL, STRICT_ASSIGN, INT_TO_STR, FLOAT_TO_INT, AMBIGUOUS_BLOCK, END_AMBIGUOUS_BLOCK
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, MOD, DIVIDE, PLUS, PRINT_STR, PRINT_INT, PRINT_FLOAT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE, ASSIGN, NEG, GREATER, GREATER_EQUAL, STRICT_ASSIGN, INT_TO_STR, FLOAT_TO_INT, REGISTER_FREE, GHOST_REGISTER_FREE
 from antlr4 import tree
 from Offset import Offset
 from ParamsTree import ParamsTree
@@ -206,6 +206,10 @@ class IntermediateCodeGenerator():
     currentParams = self.loopParams.getParams()
     repeatLabel = currentParams.get("repeatLabel")
     
+    # Debido a la ejecución de continue, se liberan los registros, pero 
+    # no se realizan cambios en descriptores de registros
+    ctx.code.concat(SingleInstruction(operator=GHOST_REGISTER_FREE))
+    
     # Añadir código de salto a inicio de loop
     ctx.code.concat(SingleInstruction(operator=GOTO, arg1=repeatLabel))
 
@@ -257,15 +261,17 @@ class IntermediateCodeGenerator():
     
     # Obtener labels de inicio y fin de loop, eliminandolos del arbol de params
     currentParams = self.loopParams.removeNodeParams()
-    repeatLabel = currentParams.get("repeatLabel")
+    repeatLabel = self.newLabel()
+    continueLabel = currentParams.get("repeatLabel") # Label al que apunta "continue;"
     endLabel = currentParams.get("endLabel")
-    
-    # Indicar que se comienza con una ejecución ambigua
-    code.concat(SingleInstruction(operator=AMBIGUOUS_BLOCK))
+
+    # Liberar todos los registros, se está entrando a una sección ambigua.
+    code.concat(SingleInstruction(operator=REGISTER_FREE))
     
     # Agregar etiqueta de inicio de loop
     repeatLabelInstruction = SingleInstruction(operator=LABEL, arg1=repeatLabel)
     code.concat(repeatLabelInstruction)
+    
       
     
     # Realizar la evaluación de la condición (si la hay)
@@ -284,6 +290,16 @@ class IntermediateCodeGenerator():
     statementCode = ctx.statement().code
     code.concat(statementCode)
     
+    # Debido a la posible ejecución de continue, el código anterior es ambiguo
+    # Se liberan los registros para que con o sin el continue, luego del continueLabel
+    # todas las variables estén en memoria
+    code.concat(SingleInstruction(operator=REGISTER_FREE))
+    
+    # Agregar continue label. Aqui redirige el flujo si se ejecuta un continue
+    # Permite que se actualice el contador antes de nueva iteración
+    code.concat(SingleInstruction(operator=LABEL, arg1=continueLabel))
+    
+    
     # Agregar expresión de actualización (si la hay)
     if hasUpdateExpression:
       updateExpressionIndex = 1 if hasConditionExpression else 0
@@ -296,8 +312,8 @@ class IntermediateCodeGenerator():
     # Etiqueta de fin
     code.concat(SingleInstruction(operator=LABEL, arg1=endLabel))
     
-    # Indicar fin de ejecución ambigua
-    code.concat(SingleInstruction(operator=END_AMBIGUOUS_BLOCK))
+    # Fin de ejecución ambigua, se liberan los registros
+    code.concat(SingleInstruction(operator=REGISTER_FREE))
     
     ctx.code = code
     
@@ -316,8 +332,8 @@ class IntermediateCodeGenerator():
     
     ctx.code = expressionNode.code # Agregar código necesario para evaluar la expresión
     
-    # Indicar que a continuación es una ejecución ambigua (if statement)
-    ctx.code.concat(SingleInstruction(operator=AMBIGUOUS_BLOCK))
+    # A continuación es una ejecución ambigua (if statement), liberar registros
+    ctx.code.concat(SingleInstruction(operator=REGISTER_FREE))
     
     skipLabel = self.newLabel()
     endLabel = self.newLabel()
@@ -326,8 +342,8 @@ class IntermediateCodeGenerator():
     conditionalCode = ConditionalInstruction(arg1=expression, branchIfFalse=True, goToLabel=skipLabel)
     conditionalCode.concat(statementCode)
     
-    # Indicar fin de ejecución ambigua del if
-    conditionalCode.concat(SingleInstruction(operator=END_AMBIGUOUS_BLOCK))
+    # Fin de ejecución ambigua del if, liberar registros
+    conditionalCode.concat(SingleInstruction(operator=REGISTER_FREE))
     
     conditionalCode.concat(SingleInstruction(operator=GOTO, arg1=endLabel)) # Evitar else (si existe)
     conditionalCode.concat(SingleInstruction(operator=LABEL, arg1=skipLabel)) # Evitar if statement
@@ -335,14 +351,14 @@ class IntermediateCodeGenerator():
     # Si hay else, ejecutarlo
     if hasElseStatement:
       
-      # Indicar que a continuación es una ejecución ambigua (else statement)
-      conditionalCode.concat(SingleInstruction(operator=AMBIGUOUS_BLOCK))
+      # A continuación es una ejecución ambigua (else statement)
+      conditionalCode.concat(SingleInstruction(operator=REGISTER_FREE))
       
       elseStatementCode = ctx.statement(1).code
       conditionalCode.concat(elseStatementCode)
       
-      # Indicar fin de ejecución ambigua del else
-      conditionalCode.concat(SingleInstruction(operator=END_AMBIGUOUS_BLOCK))
+      # Fin de ejecución ambigua del else
+      conditionalCode.concat(SingleInstruction(operator=REGISTER_FREE))
       
     # Etiqueta de fin
     conditionalCode.concat(SingleInstruction(operator=LABEL, arg1=endLabel))
@@ -408,8 +424,8 @@ class IntermediateCodeGenerator():
     repeatLabel = currentParams.get("repeatLabel")
     endLabel = currentParams.get("endLabel")
     
-    # Indicar que se comienza con una ejecución ambigua
-    whileCode = SingleInstruction(operator=AMBIGUOUS_BLOCK)
+    # se comienza con una ejecución ambigua, liberar registros
+    whileCode = SingleInstruction(operator=REGISTER_FREE)
     
     # Label para repetir loop
     whileCode.concat(SingleInstruction(operator=LABEL, arg1=repeatLabel))
@@ -429,8 +445,8 @@ class IntermediateCodeGenerator():
     # Etiqueta de fin
     whileCode.concat(SingleInstruction(operator=LABEL, arg1=endLabel))
     
-    # Indicar fin de ejecución ambigua
-    whileCode.concat(SingleInstruction(operator=END_AMBIGUOUS_BLOCK))
+    # Fin de ejecución ambigua, liberar registros
+    whileCode.concat(SingleInstruction(operator=REGISTER_FREE))
     
     ctx.code = whileCode
 
@@ -704,14 +720,14 @@ class IntermediateCodeGenerator():
         else:
           code.concat(child.code)
           
-          # Cerrar el bloque ambiguo. Solo se aplica para los operandos 2 o más (los que son ambiguos)
-          code.concat(SingleInstruction(operator=END_AMBIGUOUS_BLOCK))
+          # Liberar registros al terminar bloque ambiguo. Solo se aplica para los operandos 2 o más (los que son ambiguos)
+          code.concat(SingleInstruction(operator=REGISTER_FREE))
           
         operand1 = child.addr
         
         if operandsLen > 1:
-          # El resto de operaciones son ambiguas, abrir bloque ambiguo para siguiente bloque
-          code.concat(SingleInstruction(operator=AMBIGUOUS_BLOCK))
+          # El resto de operaciones son ambiguas, liberar registros para siguiente bloque
+          code.concat(SingleInstruction(operator=REGISTER_FREE))
         
         # Si el operando es true, saltar al final y no seguir evaluando
         conditionalCode = ConditionalInstruction(arg1=operand1,  branchIfFalse=False, goToLabel=trueLabel)
@@ -764,14 +780,14 @@ class IntermediateCodeGenerator():
         else:
           code.concat(child.code)
           
-          # Cerrar el bloque ambiguo. Solo se aplica para los operandos 2 o más (los que son ambiguos)
-          code.concat(SingleInstruction(operator=END_AMBIGUOUS_BLOCK))
+          # Liberar registros al cerrar el bloque ambiguo. Solo se aplica para los operandos 2 o más (los que son ambiguos)
+          code.concat(SingleInstruction(operator=REGISTER_FREE))
         
         operand1 = child.addr
         
         if operandsLen > 1:
-          # El resto de operaciones son ambiguas, abrir bloque ambiguo para siguiente bloque
-          code.concat(SingleInstruction(operator=AMBIGUOUS_BLOCK))
+          # El resto de operaciones son ambiguas, liberar registros al abrir bloque ambiguo para siguiente bloque
+          code.concat(SingleInstruction(operator=REGISTER_FREE))
 
         # Si el operando es false, saltar al final y no seguir evaluando
         conditionalCode = ConditionalInstruction(arg1=operand1, branchIfFalse=True, goToLabel=falseLabel)
