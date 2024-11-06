@@ -8,10 +8,13 @@ from utils.decimalToIEEE754 import decimal_to_ieee754
 from utils.consoleColors import yellow_text
 from utils.getUniqueId import getUniqueId
 
-intSize = 4
-floatSize = 4
+numberSize = 4
 stringSize = 255
 intAsStrSize = 11 # Tamaño máximo de un entero en string (+ null)
+
+intId = 1
+floatId = 2
+stringId = 3
 
 class AssemblyGenerator:
   
@@ -56,7 +59,7 @@ class AssemblyGenerator:
     Si no existe, lo crea.
     a0: contiene la dirección de memoria a verificar en el heap (valor guardado en a1). Si no existe es cero.
     a1: Contiene la dirección de memoria de la memoria estática. Equivalente a offset(base_pointer).
-    a2: size del bloque de memoria a crear.
+    a2: tipo del número que se está guardando.
     v0: dirección de memoria del bloque de memoria creado (o el ya existente).
     """
     
@@ -73,8 +76,11 @@ class AssemblyGenerator:
         
     # Reservar memoria en el heap
     self.addAssemblyCode(f"li $v0, 9")
-    self.addAssemblyCode(f"move $a0, $a2")
+    self.addAssemblyCode(f"li $a0, {numberSize + 4}") # Tamaño de un número + 4 bytes para el tipo
     self.addAssemblyCode("syscall")
+    
+    # Guardar el tipo en el primer byte de la dirección de memoria (en el heap)
+    self.addAssemblyCode(f"sb $a2, 0($v0)")
     
     # Guardar dirección de memoria en la memoria estática
     self.addAssemblyCode(f"sw $v0, 0($a1)")   
@@ -109,16 +115,19 @@ class AssemblyGenerator:
       # Obtener dirección de memoria para guardar el valor (en el heap)
       self.addAssemblyCode(f"lw $a0, {objectOffset}({objectBasePointer}) # Guardar inicio de bloque mem de heap en registro")
       
+      typeId = floatId if object.strictEqualsType(FloatType) else intId
+      
       # Llamar a función para verificar si existe un bloque de memoria en el heap, si no crearlo antes de leer
       self.addAssemblyCode(f"move $a1, {objectBasePointer}")
       self.addAssemblyCode(f"addi $a1, $a1, {objectOffset}")
-      self.addAssemblyCode(f"li $a2, {floatSize if object.strictEqualsType(FloatType) else intSize}")
+      self.addAssemblyCode(f"li $a2, {typeId}")
       self.addAssemblyCode(f"jal {self.autoNumberMemoryAlloc}")
       
+      # Se agrega un offset de 4 para omitir el byte de tipo (solo se puede múltiplos de 4)
       if object.strictEqualsType(FloatType):
-        self.addAssemblyCode(f"s.s {register}, 0($v0)")
+        self.addAssemblyCode(f"s.s {register}, 4($v0)")
       else:
-        self.addAssemblyCode(f"sw {register}, 0($v0)")
+        self.addAssemblyCode(f"sw {register}, 4($v0)")
     
     elif object.strictEqualsType(StringType):
       # Lo que se guarda en el registro, es el inicio del bloque de memoria de la cadena
@@ -216,8 +225,8 @@ class AssemblyGenerator:
         address = self.getRegister(objectToSave=value, useFloat=True, ignoreRegisters=ignoreRegisters) # Obtener registro flotante
         # Cargar dirrección del bloque de memoria en el heap
         self.addAssemblyCode(f"lw {compilerTemporary[0]}, {value.offset}({self.getBasePointer(value)})  # cargar addr de heap de float {value}")
-        # Cargar valor final
-        self.addAssemblyCode(f"l.s {address}, 0({compilerTemporary[0]})")
+        # Cargar valor final (offset de 4 para omitir el byte de tipo)
+        self.addAssemblyCode(f"l.s {address}, 4({compilerTemporary[0]})")
         
       elif value.strictEqualsType(StringType):
         
@@ -229,8 +238,8 @@ class AssemblyGenerator:
         address = self.getRegister(objectToSave=value, ignoreRegisters=ignoreRegisters) # Obtener registro entero
         # Cargar dirrección del bloque de memoria en el heap
         self.addAssemblyCode(f"lw {compilerTemporary[0]}, {value.offset}({self.getBasePointer(value)})  # cargar addr de heap int {value}")
-        # Cargar valor final
-        self.addAssemblyCode(f"lw {address}, 0({compilerTemporary[0]}) # NOTA")
+        # Cargar valor final (offset de 4 para omitir el byte de tipo)
+        self.addAssemblyCode(f"lw {address}, 4({compilerTemporary[0]}) # NOTA")
         
       # Actualizar descriptores con el valor recién cargado
       self.addressDescriptor.insertAddress(value, address)
@@ -252,6 +261,19 @@ class AssemblyGenerator:
         if updateDescriptors:
           self.registerDescriptor.removeValueFromRegister(register=register, value=object)
           self.addressDescriptor.replaceAddress(object, address=object)
+          
+  def saveTypeInHeapMemory(self, typeId, heapAddress):
+    """
+    Guarda el tipo en el primer byte de la dirección de memoria (en el heap).
+    
+    Modifica el valor de compilerTemporary[0].
+    """
+    
+    if typeId not in (intId, floatId, stringId):
+      raise Exception("Tipo no soportado.", typeId)
+    
+    self.addAssemblyCode(f"li {compilerTemporary[0]}, {typeId} # Guardar tipo en heap")
+    self.addAssemblyCode(f"sb {compilerTemporary[0]}, 0({heapAddress})")
   
   def translateInstruction(self, instruction):
     
@@ -334,13 +356,18 @@ class AssemblyGenerator:
     
     raise NotImplementedError("Instrucción no soportada.", str(instruction))
   
-  def heapAllocate(self, size):
+  def createHeapMemory(self, size, staticMemoryObject):
     """
     Reserva size cantidad de bytes en memoria dinámica y retorna (en texto) el registro que contiene la dirección.
+    @param size: Tamaño en bytes de la memoria a reservar.
+    @param staticMemoryObject: Objeto al que corresponde la memoria reservada. En su offset se guardará la dirección.
     """
     self.addAssemblyCode(f"li $v0, 9")
     self.addAssemblyCode(f"li $a0, {size}")
     self.addAssemblyCode("syscall")
+    
+    # Guardar en memoria estática la dirección del valor en el heap
+    self.addAssemblyCode(f"sw $v0, {staticMemoryObject.offset}({self.getBasePointer(staticMemoryObject)})")
     
     return "$v0"
     
@@ -352,10 +379,10 @@ class AssemblyGenerator:
         
     if valueType.equalsType((IntType, BoolType, NilType)):
       # Asignación de número
-      memoryAddressReg = self.heapAllocate(intSize)
+      memoryAddressReg = self.createHeapMemory(numberSize + 4, destination)
       
-      # Guardar en memoria estática la dirección del valor en el heap
-      self.addAssemblyCode(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)}) # Int store {str(destination)}")
+      # Guardar el tipo en el heap
+      self.saveTypeInHeapMemory(intId, memoryAddressReg)      
       
       # Guardar en registro el valor final
       register = self.getRegister(objectToSave=destination)
@@ -367,21 +394,21 @@ class AssemblyGenerator:
     
     elif isinstance(valueType, FloatType):
       # Asignación de número
-      memoryAddressReg = self.heapAllocate(floatSize)
+      memoryAddressReg = self.createHeapMemory(numberSize + 4, destination)
+      
+      # Guardar el tipo en el heap
+      self.saveTypeInHeapMemory(floatId, memoryAddressReg) 
       
       # Mover dirección de memoria creada a registro seguro
       self.addAssemblyCode(f"move {compilerTemporary[1]}, {memoryAddressReg}")
       memoryAddressReg = compilerTemporary[1]
       
-      # Guardar el valor en memoria
+      # Guardar el valor en memoria (offset de 4 para omitir el byte de tipo)
       self.addAssemblyCode(f"li {compilerTemporary[0]}, {decimal_to_ieee754(value)} # Float store")
-      self.addAssemblyCode(f"sw {compilerTemporary[0]}, 0({memoryAddressReg})")
+      self.addAssemblyCode(f"sw {compilerTemporary[0]}, 4({memoryAddressReg})")
       
       register = self.getRegister(objectToSave=destination, useFloat=True)
-      self.addAssemblyCode(f"l.s {register}, 0({memoryAddressReg})")
-      
-      # Guardar en memoria estática la dirección del valor en el heap
-      self.addAssemblyCode(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
+      self.addAssemblyCode(f"l.s {register}, 4({memoryAddressReg})") # 4 para omitir el byte de tipo
       
       # Guardar en descriptores que la variable está en el registro y en memoria
       self.registerDescriptor.replaceValueInRegister(register, destination)
@@ -390,18 +417,23 @@ class AssemblyGenerator:
       
     elif valueType.strictEqualsType(StringType):      
       
-      # Calcular tamaño: -2 por las comillas y + 1 por el caracter nulo
-      size = len(value) - 1
-      memoryAddressReg = self.heapAllocate(size)
+      # Calcular tamaño: -2 por las comillas, + 1 por el caracter nulo, + 1 por el tipo
+      size = len(value) - 2 + 1 + 1
+      memoryAddressReg = self.createHeapMemory(size, destination)
+      
+      # Guardar el tipo en el heap
+      self.saveTypeInHeapMemory(stringId, memoryAddressReg)
       
       # Mover dirección de memoria creada a registro seguro
       self.addAssemblyCode(f"move {compilerTemporary[1]}, {memoryAddressReg}")
       memoryAddressReg = compilerTemporary[1]
       
       # Agregar código assembly para guardar cada caracter en memoria
+      # Comienza a escribir en 1 para omitir el byte detipo
       for i, char in enumerate(value[1:-1]):
+        charPosition = i + 1
         self.addAssemblyCode(f"li {compilerTemporary[0]}, {ord(char)}   # Caracter {char}")
-        self.addAssemblyCode(f"sb {compilerTemporary[0]}, {i}({memoryAddressReg})")
+        self.addAssemblyCode(f"sb {compilerTemporary[0]}, {charPosition}({memoryAddressReg})")
         
       # Agregar caracter nulo al final
       self.addAssemblyCode(f"li {compilerTemporary[0]}, 0   # Caracter nulo")
@@ -410,9 +442,6 @@ class AssemblyGenerator:
       # Guardar en registro la dirección de memoria del inicio del string
       register = self.getRegister(objectToSave=destination)
       self.addAssemblyCode(f"move {register}, {memoryAddressReg}  # Guardar dirección de memoria del string")
-      
-      # Guardar en memoria estática la dirección del valor en el heap
-      self.addAssemblyCode(f"sw {register}, {destination.offset}({self.getBasePointer(destination)})")
       
       # Actualizar descriptores
       self.registerDescriptor.saveValueInRegister(register, value=destination)
@@ -465,6 +494,8 @@ class AssemblyGenerator:
     endLabel = f"end_print_string_{getUniqueId()}"
     
     self.addAssemblyCode(f"move {compilerTemporary[0]}, {address} # Guardar dirección de memoria del string")
+    self.addAssemblyCode(f"addi {compilerTemporary[0]}, {compilerTemporary[0]}, 1") # Ignorar byte de tipo
+    
     self.addAssemblyCode(f"{loopLabel}:   # Imprimir string")
     self.addAssemblyCode(f"lb $a0, 0({compilerTemporary[0]})")
     self.addAssemblyCode(f"beqz $a0, {endLabel}")
@@ -492,10 +523,11 @@ class AssemblyGenerator:
       floatOperation = operation == DIVIDE or values[0].strictEqualsType(FloatType) or values[1].strictEqualsType(FloatType)
       
       # Reservar ubicación en heap correspondiente al resultado
-      size = floatSize if floatOperation else intSize
-      memoryAddressReg = self.heapAllocate(size)
-      # Guardar en memoria estática la dirección del valor en el heap
-      self.addAssemblyCode(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
+      heapAddress = self.createHeapMemory(numberSize + 4, destination)
+      
+      # Guardar el tipo
+      typeId = floatId if floatOperation else intId
+      self.saveTypeInHeapMemory(typeId, heapAddress)
       
       
       # Cargar valores en registros
@@ -598,10 +630,11 @@ class AssemblyGenerator:
     floatOperation = value.strictEqualsType(FloatType)
     
     # Reservar ubicación en heap correspondiente al resultado
-    size = floatSize if floatOperation else intSize
-    memoryAddressReg = self.heapAllocate(size)
-    # Guardar en memoria estática la dirección del valor en el heap
-    self.addAssemblyCode(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
+    heapAddress = self.createHeapMemory(numberSize + 4, destination)
+    
+    # Guardar el tipo
+    typeId = floatId if floatOperation else intId
+    self.saveTypeInHeapMemory(typeId, heapAddress)
     
     # Realizar la operación
     if floatOperation:
@@ -626,9 +659,10 @@ class AssemblyGenerator:
     floatOperation = values[0].strictEqualsType(FloatType) or values[1].strictEqualsType(FloatType)
     
     # Reservar ubicación en heap correspondiente al resultado
-    memoryAddressReg = self.heapAllocate(intSize)
-    # Guardar en memoria estática la dirección del valor en el heap
-    self.addAssemblyCode(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
+    heapAddress = self.createHeapMemory(numberSize + 4, destination)
+    
+    # Guardar el tipo
+    self.saveTypeInHeapMemory(intId, heapAddress) # Resultado bool: entero
     
     # Cargar valores en registros
     addresses = [None, None]
@@ -696,9 +730,10 @@ class AssemblyGenerator:
     operation = instruction.operator
     
     # Reservar ubicación en heap correspondiente al resultado
-    memoryAddressReg = self.heapAllocate(intSize)
-    # Guardar en memoria estática la dirección del valor en el heap
-    self.addAssemblyCode(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
+    heapAddress = self.createHeapMemory(numberSize + 4, destination)
+    
+    # Guardar el tipo
+    self.saveTypeInHeapMemory(intId, heapAddress) # Resultado bool: entero
 
     # Cargar valores en registros
     addresses = [None, None]
@@ -821,6 +856,9 @@ class AssemblyGenerator:
       # Copiar inicio de string a temporal, para que el original no se modifique
       self.addAssemblyCode(f"move {wordCopyReg}, {addresses[i]}   # Copiar dirección de memoria del string {i+1}")
       
+      # Ignorar byte de tipo
+      self.addAssemblyCode(f"addi {wordCopyReg}, {wordCopyReg}, 1")
+      
       self.addAssemblyCode(f"{strLenLoopLabel}:")
       # Cargar byte actual
       self.addAssemblyCode(f"lb {compilerTemporary[1]}, 0({wordCopyReg})")
@@ -839,8 +877,8 @@ class AssemblyGenerator:
       
       self.addAssemblyCode(f"{strLenEndLabel}:")
       
-    # Sumar 1 por el caracter nulo
-    self.addAssemblyCode(f"addi {compilerTemporary[0]}, {compilerTemporary[0]}, 1")
+    # Sumar 2 por el byte de tipo al inicio y por el caracter nulo al final
+    self.addAssemblyCode(f"addi {compilerTemporary[0]}, {compilerTemporary[0]}, 2")
       
     # Reservar memoria para el nuevo string
     self.addAssemblyCode(f"li $v0, 9")
@@ -851,20 +889,26 @@ class AssemblyGenerator:
     resultAddress = self.getRegister(objectToSave=destination, ignoreRegisters=[wordCopyReg]+ addresses)
     self.addAssemblyCode(f"move {resultAddress}, $v0")
     
+    # Guardar el tipo en el heap
+    self.saveTypeInHeapMemory(stringId, resultAddress)
+    
     # Actualizar descriptores, indicar que el inicio del string resultante está en el registro
     self.addressDescriptor.replaceAddress(destination, resultAddress)
     self.registerDescriptor.saveValueInRegister(register=resultAddress, value=destination)
     
     # Copiar inicio de strings a temporal, el cuál se irá desplazando
     self.addAssemblyCode(f"move {compilerTemporary[0]}, {resultAddress} # Copiar en temp inicio de string resultante")
+    
+    # Saltar el byte de tipo en string resultante
+    self.addAssemblyCode(f"addi {compilerTemporary[0]}, {compilerTemporary[0]}, 1")
       
     # Iniciar a copiar strings
     loopCopyLabels = (f"copy_string1_{getUniqueId()}", f"copy_string2_{getUniqueId()}")
     endCopyLabels = (f"end_copy_string1_{getUniqueId()}", f"end_copy_string2_{getUniqueId()}")
-  
-    for i in range(2):
-      
+    
+    for i in range(2):     
       self.addAssemblyCode(f"move {wordCopyReg}, {addresses[i]}   # Copiar dirección de memoria del string {i+1}")
+      self.addAssemblyCode(f"addi {wordCopyReg}, {wordCopyReg}, 1  # Ignorar byte de tipo")
       self.addAssemblyCode(f"{loopCopyLabels[i]}:")
       self.addAssemblyCode(f"lb {compilerTemporary[1]}, 0({wordCopyReg}) # Cargar byte actual a copiar de string {i+1}")
       self.addAssemblyCode(f"beqz {compilerTemporary[1]}, {endCopyLabels[i]}  # Si es nulo, terminar string {i+1}")
@@ -883,7 +927,10 @@ class AssemblyGenerator:
     destination = instruction.result
     
     # Reservar espacio en heap para string
-    memoryAddressReg = self.heapAllocate(intAsStrSize)
+    memoryAddressReg = self.createHeapMemory(intAsStrSize + 1, destination)
+    
+    # Guardar el tipo en el heap
+    self.saveTypeInHeapMemory(stringId, memoryAddressReg)
     
     # Cambiar memoryAddress a registro seguro
     self.addAssemblyCode(f"move {compilerTemporary[0]}, {memoryAddressReg}")
@@ -912,6 +959,9 @@ class AssemblyGenerator:
     # Copiar inicio de string a registro temporal
     stringPointerReg = self.getRegister(objectToSave=None, ignoreRegisters=[resultAddress, numberReg])
     self.addAssemblyCode(f"move {stringPointerReg}, {resultAddress}")
+    
+    # Empezar en segundo byte (primer byte es para tipo)
+    self.addAssemblyCode(f"addi {stringPointerReg}, {stringPointerReg}, 1")
     
     # Si el número es cero, convertirlo a '0' directamente
     self.addAssemblyCode(f"beqz {numberReg}, {handleZeroLabel} # Si el número es cero, convertirlo a '0'")
@@ -948,6 +998,9 @@ class AssemblyGenerator:
     stringPointerForwardReg = self.getRegister(objectToSave=None, ignoreRegisters=[resultAddress, stringPointerReg, numberReg]) # Se va a ir incrementando
     self.addAssemblyCode(f"move {stringPointerForwardReg}, {resultAddress}")
     
+    # Sumar 1 para que apunte al primer caracter (ignorar tipo)
+    self.addAssemblyCode(f"addi {stringPointerForwardReg}, {stringPointerForwardReg}, 1")
+    
     # Hacer reverse de la cadena
     
     reverseLoopLabel = f"reverse_loop_{getUniqueId()}"
@@ -971,13 +1024,6 @@ class AssemblyGenerator:
     
     # Repetir loop
     self.addAssemblyCode(f"j {reverseLoopLabel}")
-    
-    
-    
-    
-    
-    
-    
     
     # Terminar
     self.addAssemblyCode(f"j {endConvertLabel}")
@@ -1004,9 +1050,10 @@ class AssemblyGenerator:
     floatReg = self.getValueInRegister(floatNumber)
     
     # Reservar espacio en el heap para int
-    memoryAddressReg = self.heapAllocate(intSize)
-    # Guardar en memoria estática la dirección del valor en el heap
-    self.addAssemblyCode(f"sw {memoryAddressReg}, {destination.offset}({self.getBasePointer(destination)})")
+    heapAddress = self.createHeapMemory(numberSize + 4, destination)
+    
+    # Guardar el tipo
+    self.saveTypeInHeapMemory(intId, heapAddress)
       
     # Convertir float a int
     self.addAssemblyCode(f"cvt.w.s {floatCompilerTemporary[0]}, {floatReg}  # Convertir float a int")
@@ -1015,8 +1062,6 @@ class AssemblyGenerator:
     intReg = self.getRegister(objectToSave=None, useFloat=False)
     self.addAssemblyCode(f"mfc1 {intReg}, {floatCompilerTemporary[0]} # Mover int de registro f a int")
     
-    # Guardar int en memoria (en el heap)
-    self.addAssemblyCode(f"sw {intReg}, 0({memoryAddressReg}) # Guardar int en memoria heap")
     
     # Actualizar descriptores
     self.registerDescriptor.saveValueInRegister(register=intReg, value=destination)
