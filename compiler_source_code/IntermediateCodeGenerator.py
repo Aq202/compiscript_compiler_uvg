@@ -1138,7 +1138,7 @@ class IntermediateCodeGenerator():
       instanceCode.concat(self.getChildrenCode(ctx))
       
       # Añadir parametro con dirección de memoria del objeto
-      instanceCode.concat(SingleInstruction(operator=PARAM, arg1=instanceAddr))
+      instanceCode.concat(SingleInstruction(operator=PARAM, arg1=instanceAddr, arg2= 0, operatorFirst=True))
       
       argsNumber = 1
       
@@ -1148,9 +1148,9 @@ class IntermediateCodeGenerator():
         argsNumber += len(ctx.arguments().expression())
                 
         # Añadir el resto de argumentos
-        for argExpression in ctx.arguments().expression():
+        for i, argExpression in enumerate(ctx.arguments().expression()):
           # Agregar CI de argumentos
-          instanceCode.concat(SingleInstruction(operator=PARAM, arg1=argExpression.addr))
+          instanceCode.concat(SingleInstruction(operator=PARAM, arg1=argExpression.addr, arg2=i + 1, operatorFirst=True))
       
       # Realizar llamada al constructor
       instanceCode.concat(SingleInstruction(operator=CALL, arg1=constructor, arg2=argsNumber, operatorFirst=True))
@@ -1236,6 +1236,7 @@ class IntermediateCodeGenerator():
           funCallCode = EmptyInstruction()
           
           numOfParams = obtainedParams
+          paramsIndex = 0
           
           # Si la función es una sobrecarga, obtener la función que corresponde a los argumentos
           if nodeType.strictEqualsType(FunctionOverload):
@@ -1248,16 +1249,19 @@ class IntermediateCodeGenerator():
               # Si es una llamada super.method, obtener referencia de objeto this
               currentParams = self.thisReferenceParams.getParams()
               thisTemp = currentParams.get("this")
-              funCallCode.concat(SingleInstruction(operator=PARAM, arg1=thisTemp))
+              funCallCode.concat(SingleInstruction(operator=PARAM, arg1=thisTemp, arg2=paramsIndex, operatorFirst=True))
+              paramsIndex += 1
             
             else: # referencia normal
-              funCallCode.concat(SingleInstruction(operator=PARAM, arg1=objectAddr))
+              funCallCode.concat(SingleInstruction(operator=PARAM, arg1=objectAddr, arg2=paramsIndex, operatorFirst=True))
+              paramsIndex += 1
               
           
           # Agregar CI de paso de argumentos
           if obtainedParams > 0:
             for argExpression in ctx.arguments(0).expression():
-              funCallCode.concat(SingleInstruction(operator=PARAM, arg1=argExpression.addr))
+              funCallCode.concat(SingleInstruction(operator=PARAM, arg1=argExpression.addr, arg2=paramsIndex, operatorFirst=True))
+              paramsIndex += 1
 
           # Añadir Ci de llamada a función
           callInstr = SingleInstruction(operator=CALL, arg1=functionDef, arg2=numOfParams, operatorFirst=True)

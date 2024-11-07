@@ -1,7 +1,7 @@
 from assemblyDescriptors import RegisterDescriptor, AddressDescriptor
 from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary, temporary as temporaryRegisters, floatTemporary as floatTemporaryRegisters, arguments as argumentRegisters
 from compoundTypes import ObjectType
-from IntermediateCodeTokens import STATIC_POINTER, STACK_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT, INT_TO_STR, FLOAT_TO_INT, NOT, REGISTER_FREE, GHOST_REGISTER_FREE, FUNCTION, END_FUNCTION, GET_ARG, RETURN, CALL, RETURN_VAL
+from IntermediateCodeTokens import STATIC_POINTER, STACK_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT, INT_TO_STR, FLOAT_TO_INT, NOT, REGISTER_FREE, GHOST_REGISTER_FREE, FUNCTION, END_FUNCTION, GET_ARG, RETURN, CALL, RETURN_VAL, PARAM
 from IntermediateCodeInstruction import SingleInstruction, ConditionalInstruction
 from primitiveTypes import FloatType, IntType, StringType, BoolType, NilType, NumberType
 from utils.decimalToIEEE754 import decimal_to_ieee754
@@ -406,6 +406,10 @@ class AssemblyGenerator:
       
       elif instruction.operator == RETURN_VAL:
         self.translateReturnValueInstruction(instruction)
+        return
+      
+      elif instruction.operator == PARAM:
+        self.translateParamInstruction(instruction)
         return
 
     elif isinstance(instruction, ConditionalInstruction):
@@ -1281,3 +1285,32 @@ class AssemblyGenerator:
     
     # Mover valor de retorno a registro de destino
     self.addAssemblyCode(f"move {returnReg}, $v1")
+    
+    
+  def translateParamInstruction(self, instruction):
+    
+    value = instruction.arg1
+    argIndex = int(instruction.arg2)
+    
+    
+    # Obtener dirección de memoria del heap que contiene el valor
+    self.addAssemblyCode(f"lw {compilerTemporary[0]}, {self.getOffset(value)}({self.getBasePointer(value)})")
+    
+    # Verificar si el último valor está en un registro, si lo está, guardar en memoria (heap)
+    valueAddress = self.addressDescriptor.getAddress(value)
+    if isinstance(valueAddress, Register):
+      # Guardar valor de registro en heap memory
+      # 4 de offset para saltar el tipo
+      if valueAddress.type in (RegisterTypes.floatSaved, RegisterTypes.floatTemporary):
+        self.addAssemblyCode(f"s.s {valueAddress}, 4({compilerTemporary[0]})")
+      else:
+        self.addAssemblyCode(f"sw {valueAddress}, 4({compilerTemporary[0]})")
+    
+    # Si es uno de los primeros argumentos, está en $a0-$a3
+    # Lo que se pasa no es el valor, sino la dirección de memoria del heap
+    if argIndex < len(argumentRegisters):
+      self.addAssemblyCode(f"move {argumentRegisters[argIndex]}, {compilerTemporary[0]}")
+      return
+
+    else:
+      raise NotImplementedError("No se permite usar más de 4 argumentos aún")
