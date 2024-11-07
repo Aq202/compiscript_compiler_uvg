@@ -80,6 +80,8 @@ class SingleInstruction(Instruction):
   
   def __str__(self):
     if self.result and self.operator and self.arg1 and self.arg2:
+      if self.operatorFirst:
+        return f"{format(self.result)} = {self.operator} {format(self.arg1)} {format(self.arg2)}"
       return f"{format(self.result)} = {format(self.arg1)} {self.operator} {format(self.arg2)}"
     
     if self. result and self.operator and self.arg1:

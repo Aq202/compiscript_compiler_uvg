@@ -43,7 +43,7 @@ class Register:
 zero = Register(RegisterTypes.zero, None)
 valueReturn = tuple(Register(RegisterTypes.valueReturn, i) for i in range(2))
 arguments = tuple(Register(RegisterTypes.arguments, i) for i in range(4))
-temporary = tuple(Register(RegisterTypes.temporary, i) for i in range(10))
+temporary = tuple(Register(RegisterTypes.temporary, i) for i in range(8))
 saved = tuple(Register(RegisterTypes.saved, i) for i in range(8))
 compilerTemporary = tuple(Register(RegisterTypes.temporary, i) for i in range(8,10))
 globalPointer = Register(RegisterTypes.globalPointer, None)

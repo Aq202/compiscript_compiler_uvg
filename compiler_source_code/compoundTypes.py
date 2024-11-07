@@ -72,6 +72,13 @@ class FunctionType:
       self.isMethod = False
       self.id = uuid.uuid4().hex[:6]
     
+    def getBodyOffset(self):
+      return self.bodyScope.getOffset()
+    
+    def getRealParamsNumber(self):
+      # Si es un método se agrega 1 por el this
+      return len(self.params) + (1 if self.isMethod else 0)
+    
     def setBodyScope(self, bodyScope):
       self.bodyScope = bodyScope
       bodyScope.reference = self # Save reference to class definition in his body scope

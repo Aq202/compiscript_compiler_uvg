@@ -491,14 +491,18 @@ class IntermediateCodeGenerator():
       functionDef = scope.reference
       
       paramsCount = 0
+      numOfParams = len(functionDef.params)
       
       if scope.isMethodScope():
         # Si es un método, obtener temporal que guarda referencia a this y eliminarla del arbol de parámetros
         currentParams = self.thisReferenceParams.removeNodeParams()
         thisTemp = currentParams.get("this")
+        
+        # Sumar 1 al número de parámetros por this
+        numOfParams += 1
     
         # Guardar código intermedio de asignación de this
-        paramsCode = SingleInstruction(result=thisTemp, operator=GET_ARG, arg1="0")
+        paramsCode = SingleInstruction(result=thisTemp, operator=GET_ARG, arg1="0", arg2=numOfParams, operatorFirst=True)
         
         paramsCount += 1
 
@@ -511,7 +515,7 @@ class IntermediateCodeGenerator():
         # con las copias de objetos realizadas en primary 
         
         # Guardar código intermedio de asignación de parámetros
-        instruction = SingleInstruction(result=param, operator=GET_ARG, arg1=str(paramsCount + i))
+        instruction = SingleInstruction(result=param, operator=GET_ARG, arg1=str(paramsCount + i), arg2=numOfParams, operatorFirst=True)
         paramsCode.concat(instruction)
 
       blockCode.concat(paramsCode)
@@ -520,10 +524,12 @@ class IntermediateCodeGenerator():
       blockCode.concat(self.getChildrenCode(ctx))
       
       # Si se sale de una función, se genera un return nil por defecto
-      blockCode.concat(SingleInstruction(operator=RETURN, arg1=Value(None, NilType())))
+      nilTemp = self.newTemp(NilType())
+      blockCode.concat(SingleInstruction(result=nilTemp, arg1=Value(None, NilType()), operator=STORE, operatorFirst=True))
+      blockCode.concat(SingleInstruction(operator=RETURN, arg1=nilTemp))
       
       # Indicar fin de función
-      blockCode.concat(SingleInstruction(operator=END_FUNCTION, arg1=functionDef))
+      blockCode.concat(SingleInstruction(operator=END_FUNCTION, arg1=functionDef, operatorFirst=True))
 
     else:
       # Si no es una función, concatenar código de hijos
@@ -538,7 +544,7 @@ class IntermediateCodeGenerator():
   def exitFunAnon(self, ctx: CompiscriptParser.FunAnonContext, functionDef: FunctionType):
     if not self.continueCodeGeneration(): return
     
-    ctx.code = SingleInstruction(operator=FUNCTION, arg1=functionDef)    
+    ctx.code = SingleInstruction(operator=FUNCTION, arg1=functionDef, operatorFirst=True)    
     
     # Concatenar código de hijos
     ctx.code.concat(self.getChildrenCode(ctx))
@@ -1271,7 +1277,7 @@ class IntermediateCodeGenerator():
           # Crear un nuevo temporal para guardar el valor de retorno
           returnType = functionDef.returnType.getType()
           returnTemp = self.newTemp(returnType)
-          funCallCode.concat(SingleInstruction(result=returnTemp, arg1=RETURN_VAL))
+          funCallCode.concat(SingleInstruction(result=returnTemp, operator=RETURN_VAL))
           
           # Asignar valor de retorno como addr
           nodeAddr = returnTemp
@@ -1428,7 +1434,8 @@ class IntermediateCodeGenerator():
 
   def exitFunction(self, ctx: CompiscriptParser.FunctionContext, functionDef: FunctionType):
     if not self.continueCodeGeneration(): return
-    ctx.code = SingleInstruction(operator=FUNCTION, arg1=functionDef)
+    
+    ctx.code = SingleInstruction(operator=FUNCTION, arg1=functionDef, operatorFirst=True)
     ctx.code.concat(self.getChildrenCode(ctx))
     
 
