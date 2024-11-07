@@ -1,7 +1,7 @@
 from assemblyDescriptors import RegisterDescriptor, AddressDescriptor
 from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary, temporary as temporaryRegisters, floatTemporary as floatTemporaryRegisters, arguments as argumentRegisters
 from compoundTypes import ObjectType
-from IntermediateCodeTokens import STATIC_POINTER, STACK_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT, INT_TO_STR, FLOAT_TO_INT, NOT, REGISTER_FREE, GHOST_REGISTER_FREE, FUNCTION, END_FUNCTION, GET_ARG, RETURN, CALL, RETURN_VAL, PARAM
+from IntermediateCodeTokens import STATIC_POINTER, STACK_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR,PRINT_ANY, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT, INT_TO_STR, FLOAT_TO_INT, NOT, REGISTER_FREE, GHOST_REGISTER_FREE, FUNCTION, END_FUNCTION, GET_ARG, RETURN, CALL, RETURN_VAL, PARAM
 from IntermediateCodeInstruction import SingleInstruction, ConditionalInstruction
 from primitiveTypes import FloatType, IntType, StringType, BoolType, NilType, NumberType
 from utils.decimalToIEEE754 import decimal_to_ieee754
@@ -236,21 +236,21 @@ class AssemblyGenerator:
     
     raise Exception("No se puede obtener el offset de este objeto.", str(object))
   
-  def getValueInRegister(self, value, ignoreRegisters=[]):
+  def getValueInRegister(self, value, ignoreRegisters=[], typeId = None):
     # Obtener ubicación más reciente
     address = self.addressDescriptor.getAddress(value)
     
     if not isinstance(address, Register):
       
       # El valor no está en un registro, cargar de memoria
-      if value.strictEqualsType(FloatType):
+      if value.strictEqualsType(FloatType) or typeId == floatId:
         address = self.getRegister(objectToSave=value, useFloat=True, ignoreRegisters=ignoreRegisters) # Obtener registro flotante
         # Cargar dirrección del bloque de memoria en el heap
         self.addAssemblyCode(f"lw {compilerTemporary[0]}, {self.getOffset(value)}({self.getBasePointer(value)})  # cargar addr de heap de float {value}")
         # Cargar valor final (offset de 4 para omitir el byte de tipo)
         self.addAssemblyCode(f"l.s {address}, 4({compilerTemporary[0]})")
         
-      elif value.strictEqualsType(StringType):
+      elif value.strictEqualsType(StringType) or typeId == stringId:
         
         address = self.getRegister(objectToSave=value, ignoreRegisters=ignoreRegisters) # Obtener registro entero
         # Cargar dirrección del bloque de memoria en el heap
@@ -269,7 +269,7 @@ class AssemblyGenerator:
       
     return address
   
-  def freeAllRegisters(self, updateDescriptors=True):
+  def freeAllRegisters(self, updateDescriptors=True, saveValues=True):
     
     usedRegisters = self.registerDescriptor.getUsedRegisters()
     
@@ -277,7 +277,8 @@ class AssemblyGenerator:
       
       for object in tuple(self.registerDescriptor.getValuesInRegister(register)):
         
-        self.saveRegisterValueInMemory(register, object)
+        if saveValues:
+          self.saveRegisterValueInMemory(register, object)
         
         # Actualizar descriptores
         if updateDescriptors:
@@ -330,11 +331,11 @@ class AssemblyGenerator:
         self.translateArithmeticOperation(instruction)
         return
       
-      elif instruction.operator == ASSIGN:
-        self.translateAssignmentInstruction(instruction)
-        return
+      # elif instruction.operator == ASSIGN:
+      #   self.translateAssignmentInstruction(instruction)
+      #   return
       
-      elif instruction.operator == STRICT_ASSIGN:
+      elif instruction.operator in (ASSIGN, STRICT_ASSIGN):
         self.translateStrictAssignmentInstruction(instruction)
         return
       elif instruction.operator == NEG:
@@ -410,6 +411,10 @@ class AssemblyGenerator:
       
       elif instruction.operator == PARAM:
         self.translateParamInstruction(instruction)
+        return
+      
+      elif instruction.operator == PRINT_ANY:
+        self.translateAnyPrint(instruction)
         return
 
     elif isinstance(instruction, ConditionalInstruction):
@@ -517,7 +522,7 @@ class AssemblyGenerator:
     value = instruction.arg1
     
     # Obtener ubicación más reciente    
-    address = self.getValueInRegister(value)
+    address = self.getValueInRegister(value, typeId=intId)
     self.addAssemblyCode(f"move $a0, {address}")
     
     self.addAssemblyCode(f"li $v0, 1")
@@ -533,7 +538,7 @@ class AssemblyGenerator:
     value = instruction.arg1
     
     # Obtener ubicación más reciente    
-    address = self.getValueInRegister(value)
+    address = self.getValueInRegister(value, typeId=floatId)
     self.addAssemblyCode(f"mov.s $f12, {address}")
         
     self.addAssemblyCode(f"li $v0, 2")
@@ -549,7 +554,7 @@ class AssemblyGenerator:
     value = instruction.arg1
     
     # Obtener ubicación de inicio de bloque de mem de string en registro
-    address = self.getValueInRegister(value)
+    address = self.getValueInRegister(value, typeId=stringId)
     
     # Cargar e imprimir cada caracter hasta encontrar el nulo
     loopLabel = f"print_string_{getUniqueId()}"
@@ -572,6 +577,51 @@ class AssemblyGenerator:
     self.addAssemblyCode("li $a0, 10")
     self.addAssemblyCode("syscall")
     
+  
+  def translateAnyPrint(self, instruction):
+    
+    # Se verifica el tipo guardado en el primer byte de la dirección de memoria
+    # y se ejecuta una estructura de if else para determinar si operar como int, float o string
+    
+    value = instruction.arg1
+    
+    # Liberar registros (región ambigua)
+    self.freeAllRegisters()
+    
+    # Obtener ubicación de inicio de bloque de mem en el heap
+    self.addAssemblyCode(f"lw {compilerTemporary[0]}, {self.getOffset(value)}({self.getBasePointer(value)})")
+    
+    floatPrintLabel = f"print_float_{getUniqueId()}"
+    stringPrintLabel = f"print_string_{getUniqueId()}"
+    endPrintLabel = f"end_print_{getUniqueId()}"
+    
+    # Obtener tipo
+    self.addAssemblyCode(f"lb {compilerTemporary[0]}, 0({compilerTemporary[0]})")
+    
+    # Estructura de if else
+    self.addAssemblyCode(f"li {compilerTemporary[1]}, {stringId}")
+    self.addAssemblyCode(f"beq {compilerTemporary[0]}, {compilerTemporary[1]}, {stringPrintLabel}")
+    
+    self.addAssemblyCode(f"li {compilerTemporary[1]}, {floatId}")
+    self.addAssemblyCode(f"beq {compilerTemporary[0]}, {compilerTemporary[1]}, {floatPrintLabel}")
+    
+    # Por defecto es un int
+    self.translateIntPrint(instruction)
+    self.freeAllRegisters(saveValues=False)
+    self.addAssemblyCode(f"j {endPrintLabel}")
+    
+    # Imprimir como float
+    self.addAssemblyCode(f"{floatPrintLabel}:")
+    self.translateFloatPrint(instruction)
+    self.freeAllRegisters(saveValues=False)
+    self.addAssemblyCode(f"j {endPrintLabel}")
+    
+    # Imprimir como string
+    self.addAssemblyCode(f"{stringPrintLabel}:")
+    self.translateStringPrint(instruction)
+    self.freeAllRegisters(saveValues=False)
+    
+    self.addAssemblyCode(f"{endPrintLabel}:")
     
   
   def translateArithmeticOperation(self, instruction):
@@ -1292,7 +1342,6 @@ class AssemblyGenerator:
     value = instruction.arg1
     argIndex = int(instruction.arg2)
     
-    
     # Obtener dirección de memoria del heap que contiene el valor
     self.addAssemblyCode(f"lw {compilerTemporary[0]}, {self.getOffset(value)}({self.getBasePointer(value)})")
     
@@ -1303,8 +1352,24 @@ class AssemblyGenerator:
       # 4 de offset para saltar el tipo
       if valueAddress.type in (RegisterTypes.floatSaved, RegisterTypes.floatTemporary):
         self.addAssemblyCode(f"s.s {valueAddress}, 4({compilerTemporary[0]})")
-      else:
+        
+      elif value.strictEqualsType((IntType, BoolType, NilType)):
         self.addAssemblyCode(f"sw {valueAddress}, 4({compilerTemporary[0]})")
+        
+      elif not value.strictEqualsType(StringType):
+      
+        # Obtener el tipo int o string en tiempo de ejecución
+        self.addAssemblyCode(f"lb {compilerTemporary[1]}, 0({compilerTemporary[0]})")
+        
+        endStoreParamLabel = f"end_store_param_{getUniqueId()}"
+        
+        # Si es string no se guarda el valor, ya está en el heap
+        self.addAssemblyCode(f"beq {compilerTemporary[1]}, {stringId}, {endStoreParamLabel}")
+        
+        # Alacenamiento int
+        self.addAssemblyCode(f"sw {valueAddress}, 4({compilerTemporary[0]})")
+        
+        self.addAssemblyCode(f"{endStoreParamLabel}:")
     
     # Si es uno de los primeros argumentos, está en $a0-$a3
     # Lo que se pasa no es el valor, sino la dirección de memoria del heap

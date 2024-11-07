@@ -4,7 +4,7 @@ from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType, F
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, MOD, DIVIDE, PLUS, PRINT_STR, PRINT_INT, PRINT_FLOAT, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE, ASSIGN, NEG, GREATER, GREATER_EQUAL, STRICT_ASSIGN, INT_TO_STR, FLOAT_TO_INT, REGISTER_FREE, GHOST_REGISTER_FREE
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, MOD, DIVIDE, PLUS, PRINT_STR, PRINT_INT, PRINT_FLOAT, PRINT_ANY, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE, ASSIGN, NEG, GREATER, GREATER_EQUAL, STRICT_ASSIGN, INT_TO_STR, FLOAT_TO_INT, REGISTER_FREE, GHOST_REGISTER_FREE
 from antlr4 import tree
 from Offset import Offset
 from ParamsTree import ParamsTree
@@ -374,12 +374,14 @@ class IntermediateCodeGenerator():
     ctx.code = self.getChildrenCode(ctx)
     
     child = ctx.getChild(1)
-    if child.type.equalsType((IntType, BoolType)):
+    if child.type.strictEqualsType((IntType, BoolType, NilType)):
       ctx.code.concat(SingleInstruction(operator=PRINT_INT, arg1=ctx.expression().addr))
-    elif child.type.equalsType(FloatType):
+    elif child.type.strictEqualsType(FloatType):
       ctx.code.concat(SingleInstruction(operator=PRINT_FLOAT, arg1=ctx.expression().addr))
-    else:
+    elif child.type.strictEqualsType(StringType):
       ctx.code.concat(SingleInstruction(operator=PRINT_STR, arg1=ctx.expression().addr))
+    else:
+      ctx.code.concat(SingleInstruction(operator=PRINT_ANY, arg1=ctx.expression().addr))
 
   def enterReturnStmt(self, ctx: CompiscriptParser.ReturnStmtContext):
     if not self.continueCodeGeneration(): return
