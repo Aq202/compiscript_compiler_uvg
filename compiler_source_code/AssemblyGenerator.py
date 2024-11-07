@@ -232,7 +232,7 @@ class AssemblyGenerator:
     
     isInsideFunction = len(self.activeFunctions) > 0
     if isinstance(object, ObjectType):
-      return object.offset if not isInsideFunction else object.offset * -1
+      return object.offset if not isInsideFunction else (object.offset * -1 - 4)
     
     raise Exception("No se puede obtener el offset de este objeto.", str(object))
   
@@ -1272,7 +1272,9 @@ class AssemblyGenerator:
       
     
     # Hacer pop de argumentos
-    self.addAssemblyCode(f"addu $sp, $sp, {numParams * 4} # Hacer pop de argumentos")
+    if numParams > 4:
+      storedParams = numParams - 4
+      self.addAssemblyCode(f"addu $sp, $sp, {storedParams * 4} # Hacer pop de argumentos")
     
     # Retornar a dirección de retorno
     self.addAssemblyCode(f"jr $ra")    
