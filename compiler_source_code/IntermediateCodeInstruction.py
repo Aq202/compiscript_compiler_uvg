@@ -79,29 +79,29 @@ class SingleInstruction(Instruction):
     self.operatorFirst = operatorFirst
   
   def __str__(self):
-    if self.result and self.operator and self.arg1 and self.arg2:
+    if self.result != None and self.operator != None and self.arg1 != None and self.arg2 != None:
       if self.operatorFirst:
         return f"{format(self.result)} = {self.operator} {format(self.arg1)} {format(self.arg2)}"
       return f"{format(self.result)} = {format(self.arg1)} {self.operator} {format(self.arg2)}"
     
-    if self. result and self.operator and self.arg1:
+    if self.result != None and self.operator != None and self.arg1 != None:
       return f"{format(self.result)} = {self.operator} {format(self.arg1)}"
     
-    if self.result and self.arg1:
+    if self.result != None and self.arg1 != None and self.arg2 == None:
       return f"{format(self.result)} = {format(self.arg1)}"
     
-    if self.operator and self.arg1 and self.arg2:
+    if self.operator != None and self.arg1 != None and self.arg2 != None:
       if self.operatorFirst:
         return f"{self.operator} {format(self.arg1)} {format(self.arg2)}"
       return f"{format(self.arg1)} {self.operator} {format(self.arg2)}"
     
-    if self.operator and self.arg1:
+    if self.operator != None and self.arg1 != None:
       return f"{self.operator} {format(self.arg1)}"
     
-    if self.operator and self.result and not self.arg1 and not self.arg2:
+    if self.operator != None and self.result != None and self.arg1 == None and self.arg2 == None:
       return f"{format(self.result)} = {self.operator}"
     
-    if self.operator and not self.arg1 and not self.arg2:
+    if self.operator != None and self.arg1 == None and self.arg2 == None:
       return f"{self.operator}"
     
     raise Exception("Single instruction no válida para imprimir")
