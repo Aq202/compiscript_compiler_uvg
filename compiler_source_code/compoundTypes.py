@@ -25,8 +25,13 @@ class UnionType(DataType):
     return __class__ == AnyType or any([t.equalsType(__class__) for t in self.types])
   
   def strictEqualsType(self, __class__):
+    """
+    Si la union tiene un solo tipo, se compara si es igual al tipo indicado.
+    Si todos los tipos de la union son iguales al tipo indicado, se retorna True.
+    """
     if len(self.types) != 1:
-      return False
+      
+      return all([t.strictEqualsType(__class__) for t in self.types])
     
     return self.types[0].strictEqualsType(__class__)
     

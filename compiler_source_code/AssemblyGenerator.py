@@ -1,9 +1,9 @@
 from assemblyDescriptors import RegisterDescriptor, AddressDescriptor
-from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary, temporary as temporaryRegisters, floatTemporary as floatTemporaryRegisters, arguments as argumentRegisters
+from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary, temporary as temporaryRegisters, floatTemporary as floatTemporaryRegisters, arguments as argumentRegisters, floatArguments as floatArgumentRegisters
 from compoundTypes import ObjectType
 from IntermediateCodeTokens import STATIC_POINTER, STACK_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR,PRINT_ANY, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT, INT_TO_STR, FLOAT_TO_INT, NOT, REGISTER_FREE, GHOST_REGISTER_FREE, FUNCTION, END_FUNCTION, GET_ARG, RETURN, CALL, RETURN_VAL, PARAM
 from IntermediateCodeInstruction import SingleInstruction, ConditionalInstruction
-from primitiveTypes import FloatType, IntType, StringType, BoolType, NilType, NumberType
+from primitiveTypes import FloatType, IntType, StringType, BoolType, NilType
 from utils.decimalToIEEE754 import decimal_to_ieee754
 from utils.consoleColors import yellow_text
 from utils.getUniqueId import getUniqueId
@@ -101,43 +101,128 @@ class AssemblyGenerator:
     self.addAssemblyCode(f"jr $ra")
     self.addAssemblyCode(f"nop")
     
-  
-  
-  def saveRegisterValueInMemory(self, register, object):
+  def saveIntRegisterValueInMemory(self, register, object):
     """
     Guarda el valor de un registro en memoria, en la ubicación correspondiente al objeto.
-    Si es un number guarda el valor del numero en el heap, es decir, objectStatic->heapAddress->storeValue.
+    Guarda el valor del numero en el heap, es decir, objectStatic->heapAddress->storeValue.
     
     Modifica valores de $a0, $a1, $a2, $v0.
     """
     
-    
-    # Guardar valor de registro en memoria
     objectBasePointer = self.getBasePointer(object)
     objectOffset = self.getOffset(object)
     
-    if object.equalsType((IntType, BoolType, FloatType, NumberType, NilType)):
-      # Obtener dirección de memoria para guardar el valor (en el heap)
-      self.addAssemblyCode(f"lw $a0, {objectOffset}({objectBasePointer}) # Guardar inicio de bloque mem de heap en registro")
-      
-      typeId = floatId if object.strictEqualsType(FloatType) else intId
-      
-      # Llamar a función para verificar si existe un bloque de memoria en el heap, si no crearlo antes de leer
-      self.addAssemblyCode(f"move $a1, {objectBasePointer}")
-      self.addAssemblyCode(f"addi $a1, $a1, {objectOffset}")
-      self.addAssemblyCode(f"li $a2, {typeId}")
-      self.addAssemblyCode(f"jal {self.autoNumberMemoryAlloc}")
-      
-      # Se agrega un offset de 4 para omitir el byte de tipo (solo se puede múltiplos de 4)
-      if object.strictEqualsType(FloatType):
-        self.addAssemblyCode(f"s.s {register}, 4($v0)")
-      else:
-        self.addAssemblyCode(f"sw {register}, 4($v0)")
+    self.addAssemblyCode(f"lw $a0, {objectOffset}({objectBasePointer}) # Guardar int en memoria")
     
-    elif object.strictEqualsType(StringType):
-      # Lo que se guarda en el registro, es el inicio del bloque de memoria de la cadena
-      # Guardar en memoria estática dicha dirección
-      self.addAssemblyCode(f"sw {register}, {objectOffset}({objectBasePointer}) # Guardar inicio de string")
+    # Llamar a función para verificar si existe un bloque de memoria en el heap, si no crearlo antes de leer
+    self.addAssemblyCode(f"move $a1, {objectBasePointer}")
+    self.addAssemblyCode(f"addi $a1, $a1, {objectOffset}")
+    self.addAssemblyCode(f"li $a2, {intId}")
+    self.addAssemblyCode(f"jal {self.autoNumberMemoryAlloc}")
+    
+    self.addAssemblyCode(f"sw {register}, 4($v0)")
+    
+  def saveFloatRegisterValueInMemory(self, register, object):
+    """
+    Guarda el valor de un registro en memoria, en la ubicación correspondiente al objeto.
+    Guarda el valor del numero en el heap, es decir, objectStatic->heapAddress->storeValue.
+    
+    Modifica valores de $a0, $a1, $a2, $v0.
+    """
+    
+    objectBasePointer = self.getBasePointer(object)
+    objectOffset = self.getOffset(object)
+    
+    self.addAssemblyCode(f"lw $a0, {objectOffset}({objectBasePointer}) # Guardar float en memoria")
+    
+    # Llamar a función para verificar si existe un bloque de memoria en el heap, si no crearlo antes de leer
+    self.addAssemblyCode(f"move $a1, {objectBasePointer}")
+    self.addAssemblyCode(f"addi $a1, $a1, {objectOffset}")
+    self.addAssemblyCode(f"li $a2, {floatId}")
+    self.addAssemblyCode(f"jal {self.autoNumberMemoryAlloc}")
+    
+    self.addAssemblyCode(f"s.s {register}, 4($v0)")
+    
+  def saveStringRegisterValueInMemory(self, register, object):
+    """
+    Guarda el valor de un registro en memoria, en la ubicación correspondiente al objeto.
+    Guarda el valor del numero en el heap, es decir, objectStatic->heapAddress->storeValue.
+    
+    Modifica valores de $a0, $a1, $a2, $v0.
+    """
+    
+    objectBasePointer = self.getBasePointer(object)
+    objectOffset = self.getOffset(object)
+    # Lo que se guarda en el registro, es el inicio del bloque de memoria de la cadena
+    # Guardar en memoria estática dicha dirección
+    self.addAssemblyCode(f"sw {register}, {objectOffset}({objectBasePointer}) # Guardar inicio de string")
+    
+  
+  def saveRegisterValueInMemory(self, register, object, typeId = None):
+    """
+    Guarda el valor de un registro en memoria, en la ubicación correspondiente al objeto.
+    Si es un number guarda el valor del numero en el heap, es decir, objectStatic->heapAddress->storeValue.
+    
+    Modifica valores de $a0, $a1, $a2, $a3, $v0, $f12
+    """
+    
+    if object.strictEqualsType((IntType, BoolType, NilType)) or typeId == intId:
+      self.saveIntRegisterValueInMemory(register, object)
+      
+    elif object.strictEqualsType(FloatType) or typeId == floatId:
+      self.saveFloatRegisterValueInMemory(register, object)
+      
+    elif object.strictEqualsType(StringType) or typeId == stringId:
+      self.saveStringRegisterValueInMemory(register, object)
+      
+    else:
+      # Caso any, se debe realizar una verificación del tipo en tiempo de ejecución
+      
+      saveIntRegLabel = f"save_int_reg_{getUniqueId()}"
+      saveFloatRegLabel = f"save_float_reg_{getUniqueId()}"
+      endSaveRegLabel = f"end_save_reg_{getUniqueId()}"
+      
+      # Obtener dirección en el heap
+      self.addAssemblyCode(f"lw $a0, {self.getOffset(object)}({self.getBasePointer(object)})")
+      
+      # obtener tipo
+      self.addAssemblyCode(f"lb $a0, 0($a0)")
+      
+      # Estructura de if type == int
+      self.addAssemblyCode(f"li $a1, {intId}")
+      self.addAssemblyCode(f"beq $a0, $a1, {saveIntRegLabel}")
+      
+      # Estructura de if type == float
+      self.addAssemblyCode(f"li $a1, {floatId}")
+      self.addAssemblyCode(f"beq $a0, $a1, {saveFloatRegLabel}")
+      
+      # Por defecto es un string
+      self.saveStringRegisterValueInMemory(register, object)
+      self.addAssemblyCode(f"j {endSaveRegLabel}")
+      
+      # Guardar como int
+      self.addAssemblyCode(f"{saveIntRegLabel}:")
+      intReg = register
+      if register.type not in (RegisterTypes.temporary, RegisterTypes.saved):
+        # Mover a registro entero: $a3
+        self.addAssemblyCode(f"move $a3, {register}")
+        intReg = argumentRegisters[3]
+      self.saveIntRegisterValueInMemory(intReg, object)
+      self.addAssemblyCode(f"j {endSaveRegLabel}")
+      
+      # Guardar como float
+      self.addAssemblyCode(f"{saveFloatRegLabel}:")
+      floatReg = register
+      if register.type not in (RegisterTypes.floatTemporary, RegisterTypes.floatSaved):
+        # Mover a registro float: $f12
+        self.addAssemblyCode(f"mtc1 {register}, $f12")
+        floatReg = floatArgumentRegisters[0]
+      
+      self.saveFloatRegisterValueInMemory(floatReg, object)
+      self.addAssemblyCode(f"j {endSaveRegLabel}")
+      
+      self.addAssemblyCode(f"{endSaveRegLabel}:")  
+    
     
     
   def getRegister(self, objectToSave=None, useFloat=False, ignoreRegisters=[]):
@@ -236,7 +321,7 @@ class AssemblyGenerator:
     
     raise Exception("No se puede obtener el offset de este objeto.", str(object))
   
-  def getValueInRegister(self, value, ignoreRegisters=[], typeId = None):
+  def getValueInRegister(self, value, ignoreRegisters=[], typeId = None, updateDescriptors=True):
     # Obtener ubicación más reciente
     address = self.addressDescriptor.getAddress(value)
     
@@ -264,8 +349,9 @@ class AssemblyGenerator:
         self.addAssemblyCode(f"lw {address}, 4({compilerTemporary[0]}) # NOTA")
         
       # Actualizar descriptores con el valor recién cargado
-      self.addressDescriptor.insertAddress(value, address)
-      self.registerDescriptor.saveValueInRegister(address, value)
+      if updateDescriptors:
+        self.addressDescriptor.insertAddress(value, address)
+        self.registerDescriptor.saveValueInRegister(address, value)
       
     return address
   
@@ -428,6 +514,8 @@ class AssemblyGenerator:
     Reserva size cantidad de bytes en memoria dinámica y retorna (en texto) el registro que contiene la dirección.
     @param size: Tamaño en bytes de la memoria a reservar.
     @param staticMemoryObject: Objeto al que corresponde la memoria reservada. En su offset se guardará la dirección.
+    
+    Modifica el valor de $a0 y $v0.
     """
     self.addAssemblyCode(f"li $v0, 9")
     self.addAssemblyCode(f"li $a0, {size}")
@@ -719,17 +807,88 @@ class AssemblyGenerator:
     value = instruction.arg1
     result = instruction.result
     
-    valueReg = self.getValueInRegister(value)    
     
-    self.saveRegisterValueInMemory(register=valueReg, object=result)    
     
-    # Eliminar valor de registro en descriptores
-    resultPrevAddr = self.addressDescriptor.getAddress(result)
-    if isinstance(resultPrevAddr, Register):
-      # Si era un registro, eliminar el valor anterior de este
-      self.registerDescriptor.removeValueFromRegister(register=resultPrevAddr, value=result)
+    isValueAny = not (value.strictEqualsType((IntType, NilType, BoolType)) or value.strictEqualsType(FloatType) or value.strictEqualsType(StringType))
+    isResultAny = not (result.strictEqualsType((IntType, NilType, BoolType)) or result.strictEqualsType(FloatType) or result.strictEqualsType(StringType))
+    
+    if value.strictEqualsType(StringType):
+      # Si es string, solo se debe mover la dirección de memoria
+      valueReg = self.getValueInRegister(value)
+      self.saveRegisterValueInMemory(register=valueReg, object=result, typeId=stringId)
+    
+    elif not isValueAny and not isResultAny:
+      # Ambos son de tipo conocido
       
-    self.addressDescriptor.replaceAddress(object=result, address=result) # Eliminar registros de address de result
+      # Si result es de tipo string, reservar nuevo espacio en memoria
+      if result.strictEqualsType(StringType):
+        heapMemory = self.createHeapMemory(numberSize + 4, result)
+        self.saveTypeInHeapMemory(intId, heapMemory)
+        
+      valueReg = self.getValueInRegister(value)
+      self.saveRegisterValueInMemory(register=valueReg, object=result)
+    
+    elif isValueAny or isResultAny:
+      # Se debe realizar una verificación del tipo en tiempo de ejecución
+      
+      self.addAssemblyCode(f"nop # Asignación de tipo any")
+      
+      # Obtener el tipo de value
+      self.addAssemblyCode(f"lw {compilerTemporary[0]}, {self.getOffset(value)}({self.getBasePointer(value)})")
+      self.addAssemblyCode(f"lb {compilerTemporary[0]}, 0({compilerTemporary[0]})")
+      
+      endAssignmentLabel = f"end_strict_assignment_{getUniqueId()}"
+      assignStringLabel = f"assign_string_{getUniqueId()}"
+      assignNumberLabel = f"assign_number_{getUniqueId()}"
+      saveNumberLabel = f"save_number_{getUniqueId()}"
+      
+      # Verificar si el tipo de value es strign. Si lo es solo asignar dirección de string a result.
+      self.addAssemblyCode(f"li {compilerTemporary[1]}, {stringId}")
+      self.addAssemblyCode(f"beq {compilerTemporary[0]}, {compilerTemporary[1]}, {assignStringLabel}")
+      
+      # Obtener dirección de heap de result
+      self.addAssemblyCode(f"lw {compilerTemporary[1]}, {self.getOffset(result)}({self.getBasePointer(result)})")
+      
+      # Si la dirección no existe, crear como number
+      self.addAssemblyCode(f"beqz {compilerTemporary[1]}, {assignNumberLabel}")
+      
+      # Si la dirección existe y es de tipo string, crear y reemplazar con memoria number
+      self.addAssemblyCode(f"lb {compilerTemporary[1]}, 0({compilerTemporary[1]})") # Obtener tipo de result
+      self.addAssemblyCode(f"li $a0, {stringId}")
+      self.addAssemblyCode(f"beq {compilerTemporary[1]}, $a0, {assignNumberLabel}")
+      
+      # Else, la dirección en el heap ya es adecuada, guardar el número
+      self.addAssemblyCode(f"j {saveNumberLabel}")  
+      
+      # Asignar string
+      self.addAssemblyCode(f"{assignStringLabel}:")
+      self.addAssemblyCode(f"lw {compilerTemporary[0]}, {self.getOffset(value)}({self.getBasePointer(value)})")
+      self.addAssemblyCode(f"sw {compilerTemporary[0]}, {self.getOffset(result)}({self.getBasePointer(result)})")
+      self.addAssemblyCode(f"j {endAssignmentLabel}")
+      
+      # Asignar number
+      self.addAssemblyCode(f"{assignNumberLabel}:")
+      heapMemory = self.createHeapMemory(numberSize + 4, result)
+      self.addAssemblyCode(f"sb {compilerTemporary[0]}, 0({heapMemory})") # Guardar tipo en memoria creada
+      
+      
+      # Guardar valor de number en memoria
+      self.addAssemblyCode(f"{saveNumberLabel}:")
+      valueReg = self.getValueInRegister(value, typeId=intId, updateDescriptors=False)
+      self.saveRegisterValueInMemory(register=valueReg, object=result)
+      
+      
+      self.addAssemblyCode(f"{endAssignmentLabel}:")
+    
+    # Si variable result no es any, actualizar descriptores
+    if not isResultAny:
+    # Eliminar valor de registro en descriptores
+      resultPrevAddr = self.addressDescriptor.getAddress(result)
+      if isinstance(resultPrevAddr, Register):
+        # Si era un registro, eliminar el valor anterior de este
+        self.registerDescriptor.removeValueFromRegister(register=resultPrevAddr, value=result)
+        
+      self.addressDescriptor.replaceAddress(object=result, address=result) # Eliminar registros de address de result
     
   def translateNegativeOperation(self, instruction):
     
