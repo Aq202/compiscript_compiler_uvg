@@ -1716,6 +1716,10 @@ class AssemblyGenerator:
     
     self.activeFunctions.pop() # Sacar función actual de funciones activas
     
+    # Limpiar registros temporales en descriptores
+    # Valores ya no se guardan en memoria
+    self.freeTemporaryRegisters() 
+    
     
   def translateGetArgInstruction(self, instruction):
     
@@ -1742,11 +1746,14 @@ class AssemblyGenerator:
     
     value = instruction.arg1
     
-    # Obtener valor en registro
-    valueReg = self.getValueInRegister(value)
+    # Si el valor está en un registro, guardar en memoria
+    valueAddr = self.addressDescriptor.getAddress(value)
+    if isinstance(valueAddr, Register):
+      self.saveRegisterValueInMemory(valueAddr, value)
     
-    # Mover valor a $v1: los valores de funciones retornan siempre ahi
-    self.addAssemblyCode(f"move $v1, {valueReg}")
+    # Lo que se retorna es la dirección de memoria del heap
+    # Cargar dirección de heap a $v1: los valores de funciones retornan siempre ahi
+    self.addAssemblyCode(f"lw $v1, {self.getOffset(value)}({self.getBasePointer(value)})")
     
     # Saltar a la etiqueta de retorno
     currentFunctionName = self.activeFunctions[-1]
@@ -1764,11 +1771,20 @@ class AssemblyGenerator:
     
     destination = instruction.result
     
-    # Obtener registro de retorno
-    returnReg = self.getRegister(objectToSave=destination)
+    # Lo que se obtiene de $v1 es la dirección de memoria del heap
+    # Se sobreescribe en la dirección de destination
+    self.addAssemblyCode(f"sw $v1, {self.getOffset(destination)}({self.getBasePointer(destination)})")    
     
-    # Mover valor de retorno a registro de destino
-    self.addAssemblyCode(f"move {returnReg}, $v1")
+    # El nuevo valor está solo en memoria, no en registros.
+    # Actualizar descriptores
+    destAddresss = self.addressDescriptor.getAddress(destination)
+    if isinstance(destAddresss, Register):
+      # Guardar valor en memoria
+      self.saveRegisterValueInMemory(destAddresss, destination)
+      
+      # Eliminar valor de destination en
+      self.addressDescriptor.removeAddress(object=destination, address=destAddresss)
+      self.registerDescriptor.removeValueFromRegister(register=destAddresss, value=destination)
     
     
   def translateParamInstruction(self, instruction):
