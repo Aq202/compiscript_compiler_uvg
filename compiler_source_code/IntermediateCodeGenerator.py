@@ -1,5 +1,5 @@
 from antlr.CompiscriptParser import CompiscriptParser
-from compoundTypes import ObjectType, FunctionType, ClassType, InstanceType, ClassSelfReferenceType, FunctionOverload, SuperMethodWrapper
+from compoundTypes import ObjectType, FunctionType, ClassType, InstanceType, ClassSelfReferenceType, FunctionOverload, SuperMethodWrapper, UnionType
 from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType, FloatType, IntType
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
@@ -1010,9 +1010,12 @@ class IntermediateCodeGenerator():
       elif firstOpType.strictEqualsType(FloatType) or secondOpType.strictEqualsType(FloatType):
         # si alguno de los operandos es float, resultado es float
         tempType = FloatType()
-      else:
-        # Si uno es int o es ambiguo, resultado es int
+      elif firstOpType.strictEqualsType(IntType) and secondOpType.strictEqualsType(IntType):
+        # Si ambos son int, resultado es int
         tempType = IntType()
+      else:
+        # Si hay ambiguedad, resultado Float o Any
+        tempType = UnionType(FloatType(), IntType())
       
       temp = self.newTemp(tempType)
       
@@ -1070,8 +1073,12 @@ class IntermediateCodeGenerator():
         tempType = FloatType()
       elif firstOpType.strictEqualsType(FloatType) or secondOpType.strictEqualsType(FloatType):
         tempType = FloatType()
-      else:
+      elif firstOpType.strictEqualsType(IntType) and secondOpType.strictEqualsType(IntType):
+        # Si ambos son int, resultado es int
         tempType = IntType()
+      else:
+        # Si hay ambiguedad, resultado Float o Any
+        tempType = UnionType(FloatType(), IntType())
       
       temp = self.newTemp(tempType)
       
