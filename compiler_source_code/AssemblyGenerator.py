@@ -233,6 +233,8 @@ class AssemblyGenerator:
     @param useFloat: Si se debe buscar un registro flotante $f0 - f29.
     
     @return: El registro disponible o adecuado para guardar el objeto.
+    
+    Modifica: $a0, $a1, $a2, $a3, $v0, $f12
     """
     
     # Si el objeto a guardar ya está en un registro, retornarlo
@@ -396,6 +398,17 @@ class AssemblyGenerator:
     self.addAssemblyCode(f"li {compilerTemporary[0]}, {typeId} # Guardar tipo en heap")
     self.addAssemblyCode(f"sb {compilerTemporary[0]}, 0({heapAddress})")
   
+  def getTypeFromHeapMemory(self, object, register):
+    """
+    Obtiene el tipo de un objeto guardado en memoria dinámica.
+    Lo guarda en el registro register.
+    
+    Modifica el registro dado en register.
+    """
+    self.addAssemblyCode(f"lw {register}, {self.getOffset(object)}({self.getBasePointer(object)})")
+    self.addAssemblyCode(f"lb {register}, 0({register})")
+    
+    
   def translateInstruction(self, instruction):
     
     if isinstance(instruction, SingleInstruction):
@@ -710,9 +723,43 @@ class AssemblyGenerator:
     self.freeAllRegisters(saveValues=False)
     
     self.addAssemblyCode(f"{endPrintLabel}:")
-    
   
-  def translateArithmeticOperation(self, instruction):
+  def addArithmeticOperation(self, resultReg, value1Reg, value2Reg, operation, floatOperation):
+    """
+    Agrega el código para realizar una operación aritmética.
+    
+    Modifica: resultReg
+    """
+    operationMap = {
+        PLUS: ("add", "add.s"),
+        MINUS: ("sub", "sub.s"),
+        MULTIPLY: ("mul", "mul.s"),
+        DIVIDE: ("div", "div.s"),
+        MOD: ("remu",)
+      }
+      
+    # Realizar la operación
+    if not floatOperation:
+      self.addAssemblyCode(f"{operationMap[operation][0]} {resultReg}, {value1Reg}, {value2Reg}")
+      
+    elif operation != MOD:
+      self.addAssemblyCode(f"{operationMap[operation][1]} {resultReg}, {value1Reg}, {value2Reg}")
+      
+    else: # MOD float 
+      
+      # División (float)
+      self.addAssemblyCode(f"div.s {resultReg}, {value1Reg}, {value2Reg}")
+      # Convertir cociente a entero (truncamiento)
+      self.addAssemblyCode(f"floor.w.s {resultReg}, {resultReg}")
+      # Convertir a float de nuevo
+      self.addAssemblyCode(f"cvt.s.w {resultReg}, {resultReg}")
+      # mult parte entera * divisor
+      self.addAssemblyCode(f"mul.s {resultReg}, {resultReg}, {value2Reg}")
+      # calcular modulo (dividendo - parte entera * divisor)
+      self.addAssemblyCode(f"sub.s {resultReg}, {value1Reg}, {resultReg}")
+      
+      
+  def translateArithmeticOperationWithType(self, instruction):
       
       values = (instruction.arg1, instruction.arg2)
       destination = instruction.result
@@ -745,41 +792,139 @@ class AssemblyGenerator:
             self.addAssemblyCode(f"cvt.s.w {floatCompilerTemporary[i]}, {floatCompilerTemporary[i]}")
             addresses[i] = floatCompilerTemporary[i]
       
-      operationMap = {
-        PLUS: ("add", "add.s"),
-        MINUS: ("sub", "sub.s"),
-        MULTIPLY: ("mul", "mul.s"),
-        DIVIDE: ("div", "div.s"),
-        MOD: ("remu",)
-      }
-      
       # Realizar la operación
       if not floatOperation:
         resultReg = self.getRegister(objectToSave=destination, ignoreRegisters=addresses)
-        self.addAssemblyCode(f"{operationMap[operation][0]} {resultReg}, {addresses[0]}, {addresses[1]}")
+        self.addArithmeticOperation(resultReg, addresses[0], addresses[1], operation, floatOperation)
         
       elif operation != MOD:
         resultReg = self.getRegister(objectToSave=destination, useFloat=True, ignoreRegisters=addresses)
-        self.addAssemblyCode(f"{operationMap[operation][1]} {resultReg}, {addresses[0]}, {addresses[1]}")
+        self.addArithmeticOperation(resultReg, addresses[0], addresses[1], operation, floatOperation)
         
       else: # MOD float 
         
-        modRegTemp = self.getRegister(objectToSave=None, useFloat=True, ignoreRegisters=addresses)
-        # División (float)
-        self.addAssemblyCode(f"div.s {modRegTemp}, {addresses[0]}, {addresses[1]}")
-        # Convertir cociente a entero (truncamiento)
-        self.addAssemblyCode(f"floor.w.s {modRegTemp}, {modRegTemp}")
-        # Convertir a float de nuevo
-        self.addAssemblyCode(f"cvt.s.w {modRegTemp}, {modRegTemp}")
-        # mult parte entera * divisor
-        self.addAssemblyCode(f"mul.s {modRegTemp}, {modRegTemp}, {addresses[1]}")
-        # calcular modulo (dividendo - parte entera * divisor)
         resultReg = self.getRegister(objectToSave=destination, useFloat=True, ignoreRegisters=addresses)
-        self.addAssemblyCode(f"sub.s {resultReg}, {addresses[0]}, {modRegTemp}")
+        self.addArithmeticOperation(resultReg, addresses[0], addresses[1], operation, floatOperation)
         
       # Actualizar descriptores
       self.registerDescriptor.replaceValueInRegister(resultReg, destination)
       self.addressDescriptor.replaceAddress(destination, resultReg)
+  
+  def translateAnyArithmeticOperation(self, instruction):
+    """
+    Se utiliza cuando alguno de los dos operandos es any (o ambos).
+    """
+    
+    values = (instruction.arg1, instruction.arg2)
+    destination = instruction.result
+    operator = instruction.operator
+    
+    # Guardar en memoria si está en registro
+    for value in values:
+      address = self.addressDescriptor.getAddress(value)
+      
+      if isinstance(address, Register):
+        self.saveRegisterValueInMemory(register=address, object=value)
+    
+    # Reservar registros temporales
+    tempReg = self.getRegister(objectToSave=None)
+    floatTempReg = self.getRegister(objectToSave=None, useFloat=True)
+    
+    # Reservar ubicación en heap correspondiente al resultado
+    heapAddress = self.createHeapMemory(numberSize + 4, destination)
+    
+    # Obtener tipos
+    self.getTypeFromHeapMemory(object=values[0],register=compilerTemporary[0])
+    self.getTypeFromHeapMemory(object=values[1],register=compilerTemporary[1])
+    
+    arithFloatLabel = f"arith_float_{getUniqueId()}"
+    arithEndLabel = f"arith_end_{getUniqueId()}"
+    
+    self.addAssemblyCode("nop # Inicio de operación aritmética any")
+    
+    # Verificar si alguno de los valores es float
+    self.addAssemblyCode(f"li {tempReg}, {floatId}")
+    self.addAssemblyCode(f"beq {compilerTemporary[0]}, {tempReg}, {arithFloatLabel}")
+    self.addAssemblyCode(f"beq {compilerTemporary[1]}, {tempReg}, {arithFloatLabel}")
+    
+    # Ambos son enteros
+    
+    # cargar valores
+    for i in range(2):
+      self.addAssemblyCode(f"lw {compilerTemporary[i]}, {self.getOffset(values[i])}({self.getBasePointer(values[i])})")
+      self.addAssemblyCode(f"lw {compilerTemporary[i]}, 4({compilerTemporary[i]})")
+      
+    # Realizar la operación
+    self.addArithmeticOperation(tempReg, compilerTemporary[0], compilerTemporary[1], operator, floatOperation=False)
+    
+    # Guardar resultado en memoria
+    self.addAssemblyCode(f"sw {tempReg}, 4({heapAddress})")
+    
+    # Guardar tipo int en resultado
+    self.saveTypeInHeapMemory(intId, heapAddress)
+    
+    self.addAssemblyCode(f"j {arithEndLabel}")  
+    
+    
+    # Alguno es float
+    
+    
+    self.addAssemblyCode(f"{arithFloatLabel}:")
+    
+    # Verificar si cada uno es float, si no convertir
+    for i in range(2):
+      onlyLoadFloatLabel = f"only_load_float_{i}_{getUniqueId()}"
+      endLoadFloatLabel = f"end_load_float_{i}_{getUniqueId()}"
+      
+      self.addAssemblyCode(f"beq {compilerTemporary[i]}, {tempReg}, {onlyLoadFloatLabel}")
+      
+      # Convertir a float
+      # Cargar valor en registro int. CompilerTemporary[i] = valor int
+      self.addAssemblyCode(f"lw {compilerTemporary[i]}, {self.getOffset(values[i])}({self.getBasePointer(values[i])})")
+      self.addAssemblyCode(f"lw {compilerTemporary[i]}, 4({compilerTemporary[i]})")
+      
+      self.addAssemblyCode(f"mtc1 {compilerTemporary[i]}, {floatCompilerTemporary[i]}") # Mover a registro float
+      self.addAssemblyCode(f"cvt.s.w {floatCompilerTemporary[i]}, {floatCompilerTemporary[i]}") # Convertir a float
+      
+      self.addAssemblyCode(f"j {endLoadFloatLabel}")
+      
+      # Solo cargar valor float
+      self.addAssemblyCode(f"{onlyLoadFloatLabel}:")
+      self.addAssemblyCode(f"lw {compilerTemporary[i]}, {self.getOffset(values[i])}({self.getBasePointer(values[i])})")
+      self.addAssemblyCode(f"l.s {floatCompilerTemporary[i]}, 4({compilerTemporary[i]})")
+      
+      self.addAssemblyCode(f"{endLoadFloatLabel}:")
+    
+    
+    # Ya se tienen los valores en registros flotantes, realizar la operación
+    self.addArithmeticOperation(floatTempReg, floatCompilerTemporary[0], floatCompilerTemporary[1], operator, floatOperation=True)
+    
+    # Guardar resultado en memoria
+    self.addAssemblyCode(f"s.s {floatTempReg}, 4({heapAddress})")
+    
+    # Guardar tipo float en resultado
+    self.saveTypeInHeapMemory(floatId, heapAddress)
+    
+    
+    self.addAssemblyCode(f"{arithEndLabel}:") # Etiqueta para que int salte a este punto
+    
+  
+  def translateArithmeticOperation(self, instruction):
+    
+    value1 = instruction.arg1
+    value2 = instruction.arg2
+    
+    isValue1Any = not (value1.strictEqualsType((IntType, NilType, BoolType)) or value1.strictEqualsType(FloatType))
+    isValue2Any = not (value2.strictEqualsType((IntType, NilType, BoolType)) or value2.strictEqualsType(FloatType))
+    
+    if not isValue1Any and not isValue2Any:
+      # Ambos son de tipo conocido
+      self.translateArithmeticOperationWithType(instruction)
+      
+    else:
+      # Al menos uno es any
+      self.translateAnyArithmeticOperation(instruction)
+      
       
       
   def translateAssignmentInstruction(self, instruction):
