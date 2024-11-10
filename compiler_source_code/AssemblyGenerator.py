@@ -446,10 +446,7 @@ class AssemblyGenerator:
         return
 
       elif instruction.operator in (EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL):
-        if not instruction.arg1.strictEqualsType(StringType):
-          self.translateSimpleComparisonOperation(instruction)
-        else:
-          self.translateStringComparisonOperation(instruction)
+        self.translateComparisonOperation(instruction)
         return
 
       elif instruction.operator == GOTO:
@@ -1064,36 +1061,11 @@ class AssemblyGenerator:
     self.registerDescriptor.replaceValueInRegister(register=resultReg, value=destination)
     self.addressDescriptor.replaceAddress(object=destination, address=resultReg)
     
-  def translateSimpleComparisonOperation(self, instruction):
     
-    values = (instruction.arg1, instruction.arg2)
-    destination = instruction.result
-    operation = instruction.operator
-    
-    # Obtener ubicación más reciente
-    
-    floatOperation = values[0].strictEqualsType(FloatType) or values[1].strictEqualsType(FloatType)
-    
-    # Reservar ubicación en heap correspondiente al resultado
-    heapAddress = self.createHeapMemory(numberSize + 4, destination)
-    
-    # Guardar el tipo
-    self.saveTypeInHeapMemory(intId, heapAddress) # Resultado bool: entero
+  def simpleComparisonOperation(self, resultReg, value1Reg, value2Reg, operation, floatOperation):
     
     # Cargar valores en registros
-    addresses = [None, None]
-    for i in range(2):
-      addresses[i] = self.getValueInRegister(values[i], ignoreRegisters=addresses)
-    
-    # Realizar conversión de tipos si es necesario
-    if floatOperation:
-      
-      for i in range(2):
-        if not values[i].strictEqualsType(FloatType):
-          
-          self.addAssemblyCode(f"mtc1 {addresses[i]} {floatCompilerTemporary[i]}")
-          self.addAssemblyCode(f"cvt.s.w {floatCompilerTemporary[i]}, {floatCompilerTemporary[i]}")
-          addresses[i] = floatCompilerTemporary[i]
+    addresses = [value1Reg, value2Reg]
     
     operationMap = {
       EQUAL: ("seq", "c.eq.s"),
@@ -1106,15 +1078,11 @@ class AssemblyGenerator:
     
     # Realizar la operación
     if not floatOperation:
-      resultReg = self.getRegister(objectToSave=destination, ignoreRegisters=addresses)
       self.addAssemblyCode(f"{operationMap[operation][0]} {resultReg}, {addresses[0]}, {addresses[1]} # Comparación entera")
       
     else:
       # Operación float
       # Mayor, mayor o igual y no igual se invierten
-      
-      resultReg = self.getRegister(objectToSave=destination, ignoreRegisters=addresses) # Guarda 0 o 1
-      
       invert = operation in (NOT_EQUAL, GREATER, GREATER_EQUAL)
       falseLabel = f"false_float_comp_{getUniqueId()}"
       endLabel = f"end_float_comp_{getUniqueId()}"
@@ -1136,32 +1104,48 @@ class AssemblyGenerator:
       # Fin
       self.addAssemblyCode(f"{endLabel}:")
       
-    # Actualizar descriptores
-    self.registerDescriptor.replaceValueInRegister(resultReg, destination)
-    self.addressDescriptor.replaceAddress(destination, resultReg)
   
-  def translateStringComparisonOperation(self, instruction):
-    values = (instruction.arg1, instruction.arg2)
-    destination = instruction.result
-    operation = instruction.operator
+  def simpleComparisonOperationWithType(self, resultReg, value1, value2, value1Reg, value2Reg, operation, floatOperation):
     
-    # Reservar ubicación en heap correspondiente al resultado
-    heapAddress = self.createHeapMemory(numberSize + 4, destination)
+    values = (value1, value2)
+    addresses = (value1Reg, value2Reg)
     
-    # Guardar el tipo
-    self.saveTypeInHeapMemory(intId, heapAddress) # Resultado bool: entero
-
+    # Realizar conversión de tipos si es necesario
+    if floatOperation:
+      
+      for i in range(2):
+        if not values[i].strictEqualsType(FloatType):
+          
+          self.addAssemblyCode(f"mtc1 {addresses[i]} {floatCompilerTemporary[i]}")
+          self.addAssemblyCode(f"cvt.s.w {floatCompilerTemporary[i]}, {floatCompilerTemporary[i]}")
+          addresses[i] = floatCompilerTemporary[i]
+    
+    self.simpleComparisonOperation(resultReg, addresses[0], addresses[1], operation, floatOperation)
+      
+  
+  def stringComparisonOperation(self, resultReg, value1Reg, value2Reg, operation):
+    """
+    Se encarga de comparar dos strings.
+    @param resultReg: Registro donde se guardará el resultado.
+    @param value1Reg: Registro donde se encuentra la dirección de mem de inicio del primer string.
+    @param value2Reg: Registro donde se encuentra la dirección de mem de inicio del segundo string.
+    @param operation: Operación de comparación a realizar.
+    
+    Modifica: resultReg
+    Value1Reg y value2Reg no pueden ser compilerTemporary.
+    """
+    
     # Cargar valores en registros
-    addresses = [None, None]
-    for i in range(2):
-      addresses[i] = self.getValueInRegister(values[i], ignoreRegisters=addresses)
+    addresses = [value1Reg, value2Reg]
+    
+    for addr in addresses:
+      if addr in compilerTemporary:
+        raise ValueError("Los registros temporales del compilador no pueden ser utilizados para comparación de strings.")
       
     repeatLabel = f"repeat_string_comp_{getUniqueId()}"
     equalLabel = f"equal_string_comp_{getUniqueId()}"
     endLabel = f"end_string_comp_{getUniqueId()}"
     charDiffLabel = f"char_diff_{getUniqueId()}"
-    
-    resultReg = self.getRegister(objectToSave=destination, ignoreRegisters=addresses)
     
     # Loop de comparación de caracteres
     self.addAssemblyCode(f"{repeatLabel}:")
@@ -1219,10 +1203,154 @@ class AssemblyGenerator:
       
     # Fin
     self.addAssemblyCode(f"{endLabel}:")
+  
+  
+  def anyComparisonOperation(self, resultReg, value1, value2, operation):
     
-    # Actualizar descriptores
+    values = (value1, value2)
+    
+    # Guardar en memoria si está en registro
+    for value in values:
+      address = self.addressDescriptor.getAddress(value)
+      
+      if isinstance(address, Register):
+        self.saveRegisterValueInMemory(register=address, object=value)
+    
+    # Reservar registros temporales
+    tempReg = self.getRegister(objectToSave=None)
+    tempReg2 = self.getRegister(objectToSave=None, ignoreRegisters=[tempReg])
+    
+    
+    self.addAssemblyCode(f"nop # Comparación de tipo any")
+    
+    # Obtener tipos
+    self.getTypeFromHeapMemory(object=values[0],register=compilerTemporary[0])
+    self.getTypeFromHeapMemory(object=values[1],register=compilerTemporary[1])
+    
+    
+    floatCompLabel = f"float_comp_{getUniqueId()}"
+    stringCompLabel = f"string_comp_{getUniqueId()}"
+    endCompLabel = f"end_comp_{getUniqueId()}"
+    
+    # Verificar si alguno de los valores es float
+    self.addAssemblyCode(f"li {tempReg}, {floatId}")
+    self.addAssemblyCode(f"beq {compilerTemporary[0]}, {tempReg}, {floatCompLabel}")
+    self.addAssemblyCode(f"beq {compilerTemporary[1]}, {tempReg}, {floatCompLabel}")
+    
+    # Verificar si alguno de los valores es string
+    self.addAssemblyCode(f"li {tempReg}, {stringId}")
+    self.addAssemblyCode(f"beq {compilerTemporary[0]}, {tempReg}, {stringCompLabel}")
+    self.addAssemblyCode(f"beq {compilerTemporary[1]}, {tempReg}, {stringCompLabel}")
+    
+    
+    # Comparación entera
+    # Cargar ambos valores
+    for i in range(2):
+      self.addAssemblyCode(f"lw {compilerTemporary[i]}, {self.getOffset(values[i])}({self.getBasePointer(values[i])})")
+      self.addAssemblyCode(f"lw {compilerTemporary[i]}, 4({compilerTemporary[i]})")
+      
+    # Realizar la operación
+    self.simpleComparisonOperation(resultReg, compilerTemporary[0], compilerTemporary[1], operation, floatOperation=False)
+    
+    self.addAssemblyCode(f"j {endCompLabel}") # Saltar al final (skip string y float)
+
+    
+    # Comparación float
+    
+    self.addAssemblyCode(f"{floatCompLabel}:")
+    
+    # Verificar si cada uno es float, si no convertir
+    # tempreg sigue siendo floatId
+    for i in range(2):
+      onlyLoadFloatLabel = f"only_load_float_{i}_{getUniqueId()}"
+      endLoadFloatLabel = f"end_load_float_{i}_{getUniqueId()}"
+      
+      self.addAssemblyCode(f"beq {compilerTemporary[i]}, {tempReg}, {onlyLoadFloatLabel}")
+      
+      # Convertir a float
+      # floatCompilerTemporary[i] = valor float
+      self.addAssemblyCode(f"lw {compilerTemporary[i]}, {self.getOffset(values[i])}({self.getBasePointer(values[i])})")
+      self.addAssemblyCode(f"l.s {floatCompilerTemporary[i]}, 4({compilerTemporary[i]})")
+      self.addAssemblyCode(f"cvt.s.w {floatCompilerTemporary[i]}, {floatCompilerTemporary[i]}") # Convertir a float
+      
+      self.addAssemblyCode(f"j {endLoadFloatLabel}")
+      
+      # Solo cargar valor en registro float
+      self.addAssemblyCode(f"{onlyLoadFloatLabel}:")
+      self.addAssemblyCode(f"lw {compilerTemporary[i]}, {self.getOffset(values[i])}({self.getBasePointer(values[i])})")
+      self.addAssemblyCode(f"l.s {floatCompilerTemporary[i]}, 4({compilerTemporary[i]})")
+      
+      self.addAssemblyCode(f"{endLoadFloatLabel}:")
+      
+    # Ya se tienen los valores en registros flotantes, realizar la operación
+    self.simpleComparisonOperation(resultReg, floatCompilerTemporary[0], floatCompilerTemporary[1], operation, floatOperation=True)
+    
+    self.addAssemblyCode(f"j {endCompLabel}") # Saltar al final (SKIP STRING)
+      
+    
+    # Comparación string
+    
+    self.addAssemblyCode(f"{stringCompLabel}:")
+    
+    # Cargar direcciones de memoria de strings
+    stringRegs = [tempReg, tempReg2]
+    for i in range(2):
+      self.addAssemblyCode(f"lw {stringRegs[i]}, {self.getOffset(values[i])}({self.getBasePointer(values[i])})")
+      
+    self.stringComparisonOperation(resultReg, stringRegs[0], stringRegs[1], operation)
+    
+    
+    self.addAssemblyCode(f"{endCompLabel}:")
+    
+    
+    
+  def translateComparisonOperation(self, instruction):
+    
+    values = (instruction.arg1, instruction.arg2)
+    destination = instruction.result
+    operation = instruction.operator
+    
+    anyOperation = any([not (value.strictEqualsType((IntType, NilType, BoolType)) or \
+                        value.strictEqualsType(FloatType) or value.strictEqualsType(StringType))
+                        for value in values])
+    
+    floatOperation = any([value.strictEqualsType(FloatType) for value in values])
+    stringOperation = any([value.strictEqualsType(StringType) for value in values])
+    
+    # Reservar ubicación en heap correspondiente al resultado
+    heapAddress = self.createHeapMemory(numberSize + 4, destination)
+    
+    # Guardar el tipo
+    self.saveTypeInHeapMemory(intId, heapAddress) # Resultado bool: entero
+      
+    resultReg = self.getRegister(objectToSave=destination)
+      
+    if anyOperation:
+      # Al menos uno es any
+      self.anyComparisonOperation(resultReg, values[0], values[1], operation)
+    else:
+      # Todos los operadores son de tipo conocido
+      
+      # Cargar valores en registros
+      addresses = [None, None]
+      for i in range(2):
+        addresses[i] = self.getValueInRegister(values[i], ignoreRegisters=addresses + [resultReg])
+      
+      if stringOperation:
+        # Comparación de strings
+        self.stringComparisonOperation(resultReg, addresses[0], addresses[1], operation)
+        
+      elif floatOperation:
+        # Comparación de bools
+        self.simpleComparisonOperationWithType(resultReg, values[0], values[1], addresses[0], addresses[1], operation, floatOperation)
+      else:
+        # Comparación entera
+        self.simpleComparisonOperationWithType(resultReg, values[0], values[1], addresses[0], addresses[1], operation, floatOperation)
+        
+    # Actualizar descriptores. Salida siempre es bool
     self.registerDescriptor.replaceValueInRegister(resultReg, destination)
-    self.addressDescriptor.replaceAddress(destination, address=resultReg)
+    self.addressDescriptor.replaceAddress(destination, resultReg)
+    
   
   def translateConditionalJumpInstruction(self, instruction):
     
