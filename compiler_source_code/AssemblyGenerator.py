@@ -318,9 +318,8 @@ class AssemblyGenerator:
     Devuelve el desplazamiento (offset) correspondiente al objeto.
     """
     
-    isInsideFunction = len(self.activeFunctions) > 0
     if isinstance(object, ObjectType):
-      return object.offset if not isInsideFunction else (object.offset * -1 - 4)
+      return object.offset if object.baseType != STACK_POINTER else (object.offset * -1 - 4)
     
     raise Exception("No se puede obtener el offset de este objeto.", str(object))
   
@@ -1406,7 +1405,7 @@ class AssemblyGenerator:
     wordCopyReg = tempReg
     
     # Contar tamaño de strings
-    self.addAssemblyCode(f"# translateConcatOperation: concatenar dos strings {stringsReg[0]} y {stringsReg[1]}")
+    self.addAssemblyCode(f"nop # translateConcatOperation: concatenar dos strings {stringsReg[0]} y {stringsReg[1]}")
     self.addAssemblyCode(f"li {compilerTemporary[0]}, 0   # Contador de tamaño de ambos strings")
     for i in range(2):
       strLenLoopLabel = f"str_len_loop{i+1}_{getUniqueId()}"
@@ -1477,7 +1476,7 @@ class AssemblyGenerator:
     self.addAssemblyCode(f"sb $zero, 0({compilerTemporary[0]})")
     
     
-  def translateConcatInstruction(self, instruction):
+  def translateConcatInstructionWithType(self, instruction):
     
     values = (instruction.arg1, instruction.arg2)
     destination = instruction.result
@@ -1498,7 +1497,129 @@ class AssemblyGenerator:
     self.registerDescriptor.saveValueInRegister(register=resultAddress, value=destination)
     
     self.concatOperation(resultAddress, stringRegs[0], stringRegs[1], wordCopyReg)
+    
+    # Guardar en memoria estática string resultante
+    self.addAssemblyCode(f"sw {resultAddress}, {self.getOffset(destination)}({self.getBasePointer(destination)})")
   
+  def translateAnyConcatInstruction(self, instruction):
+    """
+    Agrega el código para concatenar dos strings en donde hay valores any.
+    Siempre uno de los dos operadores debe ser string
+    """
+    
+    values = (instruction.arg1, instruction.arg2)
+    destination = instruction.result
+    
+    # Obtener operador string
+    stringValue = None
+    for value in values:
+      if value.strictEqualsType(StringType):
+        stringValue = value
+        break
+      
+    # Obtener operador any
+    anyValue = values[0] if values[0] != stringValue else values[1]
+    
+    # Registro para guardar el string resultante de conversión a string
+    anyValueAsStringReg = self.getRegister(objectToSave=None) 
+    
+    # Reservar registros temporales
+    intTempRegs = []
+    for _ in range(4):
+      intTempRegs.append(self.getRegister(objectToSave=None, ignoreRegisters=[anyValueAsStringReg] + intTempRegs))
+
+    
+    intConcatConvLabel = f"int_concat_conversion_{getUniqueId()}"
+    floatConcatConvLabel = f"float_concat_conversion_{getUniqueId()}"
+    endConcatConvLabel = f"end_concat_conversion_{getUniqueId()}"
+    
+    # Verificar si el valor any es float
+    self.addAssemblyCode(f"li {compilerTemporary[0]}, {floatId}")
+    self.addAssemblyCode(f"lw {compilerTemporary[1]}, {self.getOffset(anyValue)}({self.getBasePointer(anyValue)})")
+    self.addAssemblyCode(f"lb {compilerTemporary[1]}, 0({compilerTemporary[1]})")
+    self.addAssemblyCode(f"beq {compilerTemporary[0]}, {compilerTemporary[1]}, {floatConcatConvLabel}")
+    
+    # Verificar si es int
+    self.addAssemblyCode(f"li {compilerTemporary[0]}, {intId}")
+    self.addAssemblyCode(f"beq {compilerTemporary[0]}, {compilerTemporary[1]}, {intConcatConvLabel}")    
+    
+    # Si no es number, es string
+    # Cargar el valor de string en registro
+    stringValueReg = self.getValueInRegister(anyValue, typeId=stringId, updateDescriptors=False)
+    self.addAssemblyCode(f"move {anyValueAsStringReg}, {stringValueReg}")
+    
+    self.addAssemblyCode(f"j {endConcatConvLabel}")    
+    
+    # Es int, convertir int a string
+    self.addAssemblyCode(f"{intConcatConvLabel}:")
+    
+    intNumberReg = self.getValueInRegister(anyValue,
+                                            typeId=intId,
+                                            updateDescriptors=False,
+                                            ignoreRegisters=[anyValueAsStringReg] + intTempRegs)
+    
+    self.intToStrOperation(stringResultReg=anyValueAsStringReg,
+                            tempNumberReg=intNumberReg, 
+                            tempStringReg=intTempRegs[0],
+                            tempStringReg2=intTempRegs[1],
+                            destination=None)
+    
+    self.addAssemblyCode(f"j {endConcatConvLabel}")
+    
+    
+    # Si es float, convertir float a string
+    self.addAssemblyCode(f"{floatConcatConvLabel}:")
+    
+    floatNumberReg = self.getValueInRegister(anyValue,
+                                              updateDescriptors=False,
+                                              typeId=floatId,
+                                              ignoreRegisters=[anyValueAsStringReg] + intTempRegs)
+    
+    floatAsString = self.floatToStrOperation(resultStringReg=anyValueAsStringReg,
+                                              floatNumberReg=floatNumberReg,
+                                              intTempReg=intTempRegs[0],
+                                              decimalTempReg=intTempRegs[1],
+                                              tempStringResultReg=intTempRegs[2],
+                                              tempStringReg=intTempRegs[3])
+    
+    # Mover resultado de string a registro
+    self.addAssemblyCode(f"move {anyValueAsStringReg}, {floatAsString}")
+    
+    self.addAssemblyCode(f"{endConcatConvLabel}:")
+    
+    # En este punto, anyValueAsStringReg contiene valor de number convertido a string
+    # Cargar dirección de memoria de otro string y resultado
+    
+    stringValueReg = self.getValueInRegister(stringValue, ignoreRegisters=[anyValueAsStringReg, intTempRegs[0]])
+    resultStringReg = self.getRegister(objectToSave=destination,
+                                        ignoreRegisters=[anyValueAsStringReg, stringValueReg, intTempRegs[0]])
+    
+    # Si el orden se cambió al preferir string, voltear
+    if stringValue == values[1]:
+      stringValueReg, anyValueAsStringReg = anyValueAsStringReg, stringValueReg
+    
+    self.concatOperation(resultStringReg, stringValueReg, anyValueAsStringReg, intTempRegs[0])
+    
+    # Guardar en memoria estática string resultante
+    self.addAssemblyCode(f"sw {resultStringReg}, {self.getOffset(destination)}({self.getBasePointer(destination)}) #LOL")
+    
+    # Actualizar descriptores
+    self.registerDescriptor.replaceValueInRegister(resultStringReg, destination)
+    self.addressDescriptor.replaceAddress(destination, resultStringReg)
+    
+  
+  def translateConcatInstruction(self, instruction):
+    
+    values = (instruction.arg1, instruction.arg2)
+    
+    anyOperation = any([not value.strictEqualsType(StringType) for value in values])
+    
+    if anyOperation:
+      # Al menos uno es any
+      self.translateAnyConcatInstruction(instruction)
+    else:
+      # Todos son string
+      self.translateConcatInstructionWithType(instruction)
   
   def intToStrOperation(self, stringResultReg, tempNumberReg, tempStringReg, tempStringReg2, destination=None):
     """
@@ -1512,6 +1633,11 @@ class AssemblyGenerator:
     Modifica: stringResultReg, tempNumberReg, tempStringReg, tempStringReg2, compilerTemporary[0], compilerTemporary[1], 
         $a0 y $v0.
     """
+    
+    # Verificar si los parametros son repetidos
+    params = set([str(reg) for reg in (stringResultReg, tempNumberReg, tempStringReg, tempStringReg2)])
+    if len(params) < 4:
+      raise ValueError(f"Los registros temporales no pueden ser repetidos en int to str operation: stringResultReg={stringResultReg}, tempNumberReg={tempNumberReg}, tempStringReg={tempStringReg}, tempStringReg2={tempStringReg2}")
   
     # Reservar espacio en heap para string
     memoryAddressReg = self.createHeapMemory(intAsStrSize + 1, destination)
@@ -1649,21 +1775,27 @@ class AssemblyGenerator:
     self.addAssemblyCode(f"cvt.w.s {floatCompilerTemporary[0]}, {floatReg}  # Convertir float a int")
     self.addAssemblyCode(f"mfc1 {intResultReg}, {floatCompilerTemporary[0]} # Mover int de registro f a int")
   
-  def floatToStrOperation(self,  floatNumberReg, intTempReg, decimalTempReg, tempStringResultReg, tempStringReg, tempStringReg2):
+  def floatToStrOperation(self, resultStringReg, floatNumberReg, intTempReg, decimalTempReg, tempStringResultReg, tempStringReg):
     """
     Añadir código para convertir un float a string.
     
+    @param resultStringReg: Registro donde se guardará la dirección de memoria del string resultante.
     @param floatNumberReg: Registro donde se encuentra el número float. Este no se modifica.
     @param intTempReg: Registro temporal ENTERO.
     @param decimalTempReg: Registro temporal ENTERO.
     @param tempStringResultReg: Registro temporal ENTERO.
     @param tempStringReg: Registro temporal ENTERO.
-    @param tempStringReg2: Registro temporal ENTERO.
     
     @returns: Registro donde se guardará la dirección de memoria del string.
     
-    Modifica:stringResultReg, floatCompilerTemporary[0], compilerTemporary[0], compilerTemporary[1], $a0 y $v0, resultStringReg, floatTempReg, intTempReg, decimalTempReg, tempStringResultReg, tempStringReg, tempStringReg2
+    Modifica:resultStringReg, floatCompilerTemporary[0], compilerTemporary[0], compilerTemporary[1], $a0 y $v0, resultStringReg, floatTempReg, intTempReg, decimalTempReg, tempStringResultReg, tempStringReg, tempStringReg2
     """
+    
+    # Verificar que los registros de parametros no se repitan
+    params = set([str(reg) for reg in (resultStringReg, floatNumberReg, intTempReg, decimalTempReg, tempStringResultReg, tempStringReg)])
+    if len(params) < 6:
+      raise Exception(f"Los registros temporales no pueden ser repetidos en float to str operation: resultStringReg={resultStringReg}, floatNumberReg={floatNumberReg}, intTempReg={intTempReg}, decimalTempReg={decimalTempReg}, tempStringResultReg={tempStringResultReg}, tempStringReg={tempStringReg}")
+    
     # Obtener parte entera
     self.addAssemblyCode(f"trunc.w.s {floatCompilerTemporary[0]}, {floatNumberReg}  # Obtener parte entera")
     self.addAssemblyCode(f"mfc1 {intTempReg}, {floatCompilerTemporary[0]}")
@@ -1683,22 +1815,23 @@ class AssemblyGenerator:
     self.addAssemblyCode(f"mfc1 {decimalTempReg}, {floatCompilerTemporary[0]}")
     
     # Convertir parte entera a string
-    self.intToStrOperation(tempStringResultReg, intTempReg, tempStringReg, tempStringReg2)
+    self.intToStrOperation(tempStringResultReg, intTempReg, resultStringReg, tempStringReg)
     self.addAssemblyCode(f"move {intTempReg}, {tempStringResultReg}")
     
     # Convertir parte decimal a string
-    self.intToStrOperation(tempStringResultReg, decimalTempReg, tempStringReg, tempStringReg2)
+    self.intToStrOperation(tempStringResultReg, decimalTempReg, resultStringReg, tempStringReg)
     self.addAssemblyCode(f"move {decimalTempReg}, {tempStringResultReg}")
     
     # Concatenar parte entera y punto decimal
     # Cargar punto decimal
-    pointCharReg = self.getValueInRegister(self.constants[CONST_POINT_CHAR], ignoreRegisters=[tempStringResultReg, intTempReg, decimalTempReg, tempStringReg], updateDescriptors=False)
-    self.concatOperation(tempStringResultReg, intTempReg, pointCharReg, tempStringReg)
+    self.addAssemblyCode(f"nop # antes de cargar punto {self.constants[CONST_POINT_CHAR]}")
+    pointCharReg = self.getValueInRegister(self.constants[CONST_POINT_CHAR], ignoreRegisters=[tempStringResultReg, intTempReg, decimalTempReg, resultStringReg], updateDescriptors=False)
+    self.concatOperation(tempStringResultReg, intTempReg, pointCharReg, resultStringReg)
     
     # Concatenar parte decimal
-    self.concatOperation(tempStringReg, tempStringResultReg, decimalTempReg, tempStringReg2)
+    self.concatOperation(resultStringReg, tempStringResultReg, decimalTempReg, tempStringReg)
     
-    return tempStringReg
+    return resultStringReg
   
   def translateFloatToStrInstruction(self, instruction):
     

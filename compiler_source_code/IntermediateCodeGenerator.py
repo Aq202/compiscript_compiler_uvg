@@ -90,9 +90,6 @@ class IntermediateCodeGenerator():
     
     # Guardar temporales constantes
     
-    self.oneTemp = self.newTemp(IntType()) # Guarda 1
-    # Para convertir parte decimal a número entero. 0.860000 * decimalConversionFactorTemp = 860000
-    self.decimalConversionFactorTemp = self.newTemp(FloatType()) 
     # Char de punto decimal
     self.decimalPointCharTemp = self.newTemp(StringType())
 
@@ -101,8 +98,6 @@ class IntermediateCodeGenerator():
     self.programCode = EmptyInstruction()
     
     # Store de temporales constantes
-    self.programCode.concat(SingleInstruction(result=self.oneTemp, arg1=Value(1, IntType()), arg2=CONST_ONE, operator=STORE_CONST, operatorFirst=True))
-    self.programCode.concat(SingleInstruction(result=self.decimalConversionFactorTemp, arg1=Value(10000000.0, FloatType()), arg2=CONST_DECIMAL_CONV_FACTOR, operator=STORE_CONST, operatorFirst=True))
     self.programCode.concat(SingleInstruction(result=self.decimalPointCharTemp, arg1=Value("\".\"", StringType()), arg2=CONST_POINT_CHAR, operator=STORE_CONST, operatorFirst=True))
     
     # Concatenar código de hijos
@@ -953,14 +948,14 @@ class IntermediateCodeGenerator():
           
             if firstOperand.getType().strictEqualsType(FloatType):
               firstOperand = convertFloatToStr(firstOperand)
-            else:
+            elif firstOperand.getType().strictEqualsType((IntType, BoolType, NilType)):
               firstOperand = convertIntToStr(firstOperand)
           
           if not secondOperand.getType().strictEqualsType(StringType):
           
             if secondOperand.getType().strictEqualsType(FloatType):
               secondOperand = convertFloatToStr(secondOperand)
-            else:
+            elif secondOperand.getType().strictEqualsType((IntType, BoolType, NilType)):
               secondOperand = convertIntToStr(secondOperand)
           
       elif operatorLexeme == "-":
