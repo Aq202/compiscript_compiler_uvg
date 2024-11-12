@@ -4,7 +4,7 @@ from primitiveTypes import NumberType, StringType, NilType, BoolType, AnyType, F
 from IntermediateCodeInstruction import SingleInstruction, EmptyInstruction, ConditionalInstruction
 from consts import MEM_ADDR_SIZE, MAX_PROPERTIES
 from Value import Value
-from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, MOD, DIVIDE, PLUS, PRINT_STR, PRINT_INT, PRINT_FLOAT, PRINT_ANY, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE, ASSIGN, NEG, GREATER, GREATER_EQUAL, STRICT_ASSIGN, INT_TO_STR, FLOAT_TO_INT, REGISTER_FREE, GHOST_REGISTER_FREE
+from IntermediateCodeTokens import FUNCTION, GET_ARG, RETURN, PARAM, RETURN_VAL, CALL, MULTIPLY, MALLOC, EQUAL, NOT_EQUAL, NOT, LESS, LESS_EQUAL, GOTO, LABEL, MINUS, MOD, DIVIDE, PLUS, PRINT_STR, PRINT_INT, PRINT_FLOAT, PRINT_ANY, CONCAT, END_FUNCTION, INPUT_FLOAT, INPUT_INT, INPUT_STRING, STATIC_POINTER, STACK_POINTER, STORE, ASSIGN, NEG, GREATER, GREATER_EQUAL, STRICT_ASSIGN, INT_TO_STR, REGISTER_FREE, GHOST_REGISTER_FREE, FLOAT_TO_STR, STORE_CONST, CONST_DECIMAL_CONV_FACTOR, CONST_ONE, CONST_POINT_CHAR
 from antlr4 import tree
 from Offset import Offset
 from ParamsTree import ParamsTree
@@ -101,9 +101,9 @@ class IntermediateCodeGenerator():
     self.programCode = EmptyInstruction()
     
     # Store de temporales constantes
-    self.programCode.concat(SingleInstruction(result=self.oneTemp, arg1=Value(1, IntType()), operator=STORE))
-    self.programCode.concat(SingleInstruction(result=self.decimalConversionFactorTemp, arg1=Value(10000000.0, FloatType()), operator=STORE))
-    self.programCode.concat(SingleInstruction(result=self.decimalPointCharTemp, arg1=Value("\".\"", StringType()), operator=STORE))
+    self.programCode.concat(SingleInstruction(result=self.oneTemp, arg1=Value(1, IntType()), arg2=CONST_ONE, operator=STORE_CONST, operatorFirst=True))
+    self.programCode.concat(SingleInstruction(result=self.decimalConversionFactorTemp, arg1=Value(10000000.0, FloatType()), arg2=CONST_DECIMAL_CONV_FACTOR, operator=STORE_CONST, operatorFirst=True))
+    self.programCode.concat(SingleInstruction(result=self.decimalPointCharTemp, arg1=Value("\".\"", StringType()), arg2=CONST_POINT_CHAR, operator=STORE_CONST, operatorFirst=True))
     
     # Concatenar código de hijos
     self.programCode.concat(self.getChildrenCode(ctx))
@@ -923,42 +923,9 @@ class IntermediateCodeGenerator():
     firstOperand = ctx.getChild(0).addr
     
     def convertFloatToStr(operand):
-      # Obtener parte decimal
-      decimalPart = self.newTemp(FloatType())
-      code.concat(SingleInstruction(result=decimalPart, arg1=operand, operator=MOD, arg2=self.oneTemp))
-      
-      # Obtener parte entera
-      integerPart = self.newTemp(FloatType())
-      code.concat(SingleInstruction(result=integerPart, arg1=operand, operator=MINUS, arg2=decimalPart))
-      
-      # Convertir parte decimal a entera (sigue siendo .0)
-      decimalPart = decimalPart.copy()
-      code.concat(SingleInstruction(result=decimalPart, arg1=decimalPart, operator=MULTIPLY, arg2=self.decimalConversionFactorTemp))
-      
-      # Hacer conversión de float a entero
-      decimalPartInt = decimalPart.copy()
-      integerPartInt = integerPart.copy()
-      
-      decimalPartInt.setType(IntType())
-      integerPartInt.setType(IntType())      
-      
-      code.concat(SingleInstruction(result=decimalPartInt, arg1=decimalPart, operator=FLOAT_TO_INT))
-      code.concat(SingleInstruction(result=integerPartInt, arg1=integerPart, operator=FLOAT_TO_INT))
-      
-      # Convertir int a string
-      integerAsStrTemp = self.newTemp(StringType())
-      decimalAsStrTemp = self.newTemp(StringType())
-      
-      code.concat(SingleInstruction(result=integerAsStrTemp, arg1=integerPartInt, operator=INT_TO_STR))
-      code.concat(SingleInstruction(result=decimalAsStrTemp, arg1=decimalPartInt, operator=INT_TO_STR))
-      
-      # Concatenar
-      temp = self.newTemp(StringType())
-      floatAsStrTemp = self.newTemp(StringType())
-      code.concat(SingleInstruction(result=temp, arg1=integerAsStrTemp, operator=CONCAT, arg2=self.decimalPointCharTemp))
-      code.concat(SingleInstruction(result=floatAsStrTemp, arg1=temp, operator=CONCAT, arg2=decimalAsStrTemp))
-      
-      return floatAsStrTemp
+      conversionTemp = self.newTemp(StringType())
+      code.concat(SingleInstruction(result=conversionTemp, arg1=operand, operator=FLOAT_TO_STR))
+      return conversionTemp
     
     def convertIntToStr(operand):
       conversionTemp = self.newTemp(StringType())
