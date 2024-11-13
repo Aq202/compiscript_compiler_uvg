@@ -390,7 +390,8 @@ class IntermediateCodeGenerator():
 
     if expression == None:
       # No tiene valor de retorno, nil por defecto
-      returnVal = Value(None, NilType())
+      returnVal = self.newTemp(NilType())
+      ctx.code.concat(SingleInstruction(result=returnVal, arg1=Value(None, NilType()), operator=STORE, operatorFirst=True))
     
     else:
       returnVal = expression.addr
