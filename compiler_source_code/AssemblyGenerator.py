@@ -1175,7 +1175,7 @@ class AssemblyGenerator:
   def simpleComparisonOperationWithType(self, resultReg, value1, value2, value1Reg, value2Reg, operation, floatOperation):
     
     values = (value1, value2)
-    addresses = (value1Reg, value2Reg)
+    addresses = [value1Reg, value2Reg]
     
     # Realizar conversión de tipos si es necesario
     if floatOperation:
