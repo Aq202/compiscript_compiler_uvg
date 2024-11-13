@@ -1040,7 +1040,7 @@ class AssemblyGenerator:
         
       self.addressDescriptor.replaceAddress(object=result, address=result) # Eliminar registros de address de result
     
-  def translateNegativeOperation(self, instruction):
+  def negativeOperationWithType(self, instruction):
     
     value = instruction.arg1
     destination = instruction.result
@@ -1068,7 +1068,66 @@ class AssemblyGenerator:
     # Actualizar descriptores
     self.registerDescriptor.replaceValueInRegister(register=resultReg, value=destination)
     self.addressDescriptor.replaceAddress(object=destination, address=resultReg)
+  
+  
+  def anyNegativeOperation(self, instruction):
     
+    value = instruction.arg1
+    destination = instruction.result
+    
+    # Reservar espacio para resultado
+    heapAddress = self.createHeapMemory(numberSize + 4, destination)
+    
+    # Obtener tipo del valor
+    self.getTypeFromHeapMemory(value, compilerTemporary[1])
+    
+    # Guardar tipo resultante en heap
+    self.addAssemblyCode(f"sb {compilerTemporary[1]}, 0({heapAddress})")
+    
+    floatNegationLabel = f"float_negation_{getUniqueId()}"
+    endNegationLabel = f"end_negation_{getUniqueId()}"
+    
+    # Verificar tipo
+    self.addAssemblyCode(f"li {compilerTemporary[0]}, {floatId}")
+    self.addAssemblyCode(f"beq {compilerTemporary[0]}, {compilerTemporary[1]}, {floatNegationLabel}")
+    
+    # Es un entero
+    
+    # Cargar valor del número entero y negarlo
+    self.addAssemblyCode(f"lw {compilerTemporary[0]}, {self.getOffset(value)}({self.getBasePointer(value)})")
+    self.addAssemblyCode(f"lw {compilerTemporary[0]}, 4({compilerTemporary[0]})")
+    self.addAssemblyCode(f"neg {compilerTemporary[0]}, {compilerTemporary[0]}")
+    
+    # Guardar en memoria
+    self.addAssemblyCode(f"sw {compilerTemporary[0]}, 4({heapAddress})")
+    self.addAssemblyCode(f"j {endNegationLabel}")
+    
+    
+    # Es un float
+    
+    self.addAssemblyCode(f"{floatNegationLabel}:")
+    
+    # Cargar valor del número float y negarlo
+    self.addAssemblyCode(f"lw {compilerTemporary[0]}, {self.getOffset(value)}({self.getBasePointer(value)})")
+    self.addAssemblyCode(f"l.s {floatCompilerTemporary[0]}, 4({compilerTemporary[0]})")
+    self.addAssemblyCode(f"neg.s {floatCompilerTemporary[0]}, {floatCompilerTemporary[0]}")
+    
+    # Guardar en memoria
+    self.addAssemblyCode(f"s.s {floatCompilerTemporary[0]}, 4({heapAddress})")
+    
+    
+    self.addAssemblyCode(f"{endNegationLabel}:")
+  
+  
+  def translateNegativeOperation(self, instruction):
+    value = instruction.arg1
+    
+    isAny = not (value.strictEqualsType((IntType, NilType, BoolType)) or value.strictEqualsType(FloatType))
+    
+    if isAny:
+      self.anyNegativeOperation(instruction)
+    else:
+      self.negativeOperationWithType(instruction)
     
   def simpleComparisonOperation(self, resultReg, value1Reg, value2Reg, operation, floatOperation):
     
