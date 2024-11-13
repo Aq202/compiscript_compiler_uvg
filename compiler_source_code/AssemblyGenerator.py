@@ -1,5 +1,5 @@
 from assemblyDescriptors import RegisterDescriptor, AddressDescriptor
-from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary, temporary as temporaryRegisters, floatTemporary as floatTemporaryRegisters, arguments as argumentRegisters, floatArguments as floatArgumentRegisters
+from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary, temporary as temporaryRegisters, floatTemporary as floatTemporaryRegisters, arguments as argumentRegisters, floatArguments as floatArgumentRegisters, reservedCompilerTemporary
 from compoundTypes import ObjectType
 from IntermediateCodeTokens import STATIC_POINTER, STACK_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR,PRINT_ANY, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT, INT_TO_STR, NOT, REGISTER_FREE, GHOST_REGISTER_FREE, FUNCTION, END_FUNCTION, GET_ARG, RETURN, CALL, RETURN_VAL, PARAM, FLOAT_TO_STR, STORE_CONST, CONST_POINT_CHAR
 from IntermediateCodeInstruction import SingleInstruction, ConditionalInstruction
@@ -164,7 +164,7 @@ class AssemblyGenerator:
     Guarda el valor de un registro en memoria, en la ubicación correspondiente al objeto.
     Si es un number guarda el valor del numero en el heap, es decir, objectStatic->heapAddress->storeValue.
     
-    Modifica valores de $a0, $a1, $a2, $a3, $v0, $f12
+    Modifica valores de $a0, $a1, $a2, $v0, $f12, $a3 (reservedCompilerTemporary[2]).
     """
     
     if object.strictEqualsType((IntType, BoolType, NilType)) or typeId == intId:
@@ -206,8 +206,8 @@ class AssemblyGenerator:
       intReg = register
       if register.type not in (RegisterTypes.temporary, RegisterTypes.saved):
         # Mover a registro entero: $a3
-        self.addAssemblyCode(f"move $a3, {register}")
-        intReg = argumentRegisters[3]
+        intReg = reservedCompilerTemporary[2]
+        self.addAssemblyCode(f"move {reservedCompilerTemporary[2]}, {register}")
       self.saveIntRegisterValueInMemory(intReg, object)
       self.addAssemblyCode(f"j {endSaveRegLabel}")
       
@@ -235,7 +235,7 @@ class AssemblyGenerator:
     
     @return: El registro disponible o adecuado para guardar el objeto.
     
-    Modifica: $a0, $a1, $a2, $a3, $v0, $f12
+    Modifica: $a0, $a1, $a2, $v0, $f12, $a3 (reservedCompilerTemporary[2]).
     """
     
     # Si el objeto a guardar ya está en un registro, retornarlo
@@ -301,6 +301,8 @@ class AssemblyGenerator:
     base pointer de un objeto, no se garantiza que el valor retornado permanezca fijo.
     
     @param object: El objeto del cual se quiere obtener el base pointer.
+    
+    Modifica: reservedCompilerTemporary[0], reservedCompilerTemporary[1] y reservedCompilerTemporary[2].
     """
     
     if isinstance(object, ObjectType):
@@ -309,7 +311,40 @@ class AssemblyGenerator:
       if object.baseType == STATIC_POINTER:
         return "$gp"
       elif object.baseType == STACK_POINTER:
-        return "$fp"
+        
+        # Verificar si el functionLevel actual es el correcto
+        # $fp anterior = $fp actual
+        # functionLevel = $fp + 4
+        
+        currentFunctionLevel = object.getFunctionLevel()
+        
+        equalFunctionLevelLabel = f"equal_function_level_{getUniqueId()}"
+        repeatFunctionLevelCheckLabel = f"repeat_function_level_check_{getUniqueId()}"
+        
+        self.addAssemblyCode("nop # Obtener base pointer")
+        
+        # Cargar functionLevel a buscar
+        self.addAssemblyCode(f"li {reservedCompilerTemporary[0]}, {currentFunctionLevel} # Cargar functionLevel a buscar")
+        
+        # Mover $fp como punto de inicio actual
+        self.addAssemblyCode(f"move {reservedCompilerTemporary[1]}, $fp # Mover $fp como punto de inicio actual")
+        
+        self.addAssemblyCode(f"{repeatFunctionLevelCheckLabel}:")
+        
+        # Cargar functionLevel actual
+        self.addAssemblyCode(f"lw {reservedCompilerTemporary[2]}, 4({reservedCompilerTemporary[1]}) # Cargar functionLevel actual")
+        
+        # Verificar si son iguales
+        self.addAssemblyCode(f"beq {reservedCompilerTemporary[0]}, {reservedCompilerTemporary[2]}, {equalFunctionLevelLabel} # Verificar si son iguales")
+        
+        # Si no son iguales, cargar $fp de la función anterior y repetir
+        self.addAssemblyCode(f"lw {reservedCompilerTemporary[1]}, 0({reservedCompilerTemporary[1]}) # Cargar $fp de la función anterior")
+        self.addAssemblyCode(f"j {repeatFunctionLevelCheckLabel}")
+        
+        self.addAssemblyCode(f"{equalFunctionLevelLabel}:")
+        
+        # Se encontró el functionLevel correcto, retornarlo como base pointer          
+        return reservedCompilerTemporary[1]
     
     raise Exception("No se puede obtener el base pointer de este objeto.", str(object))
   
@@ -1938,6 +1973,7 @@ class AssemblyGenerator:
     functionDef = instruction.arg1
     functionName = functionDef.getUniqueName()
     functionOffset = functionDef.getBodyOffset() # Retorna el offset final, que es el tamaño del frame
+    functionLevel = functionDef.getFunctionLevel()
     
     # Limpiar descriptores de registros (funciones son ambiguas)
     self.freeAllRegisters()
@@ -1950,7 +1986,7 @@ class AssemblyGenerator:
     # Añadir etiqueta de inicio de función
     self.addAssemblyCode(f"{functionName}:")
     
-    # En este punto ya están guardados los parametros 1-4 en $a0-$a3 y el resto en el stack
+    # En este punto ya están guardados los parametros 1-4 en $a0-$a2 y el resto en el stack
     # Ahora guardar todos los registros temporales
     for reg in temporaryRegisters:
       self.addAssemblyCode(f"subu $sp, $sp, 4 # Push de registro temporal {reg}")
@@ -1965,6 +2001,11 @@ class AssemblyGenerator:
     # Guardar dirección de retorno
     self.addAssemblyCode(f"subu $sp, $sp, 4 # Push de dirección de retorno")
     self.addAssemblyCode(f"sw $ra, 0($sp)  # Guardar dirección de retorno")
+    
+    # Guardar function level de la función
+    self.addAssemblyCode(f"subu $sp, $sp, 4 # Push de function level")
+    self.addAssemblyCode(f"li {compilerTemporary[0]}, {functionLevel}")
+    self.addAssemblyCode(f"sw {compilerTemporary[0]}, 0($sp) # Guardar function level")
     
     # Guardar frame pointer anterior
     self.addAssemblyCode(f"subu $sp, $sp, 4 # Push de frame pointer anterior")
@@ -1992,6 +2033,9 @@ class AssemblyGenerator:
     # Hacer pop de frame pointer anterior
     self.addAssemblyCode(f"lw $fp, 0($sp)  # Hacer pop de frame pointer anterior")
     self.addAssemblyCode(f"addu $sp, $sp, 4")
+    
+    # Hacer pop de function level
+    self.addAssemblyCode(f"addu $sp, $sp, 4  # Hacer pop de function level")
     
     # Hacer pop de retorno
     self.addAssemblyCode(f"lw $ra, 0($sp)  # Hacer pop de dirección de retorno")
@@ -2032,11 +2076,11 @@ class AssemblyGenerator:
     destination = instruction.result
     
     # Para llegar al inicio del frame, se debe sumar el tamaño de $fp, $ra, todos los temporales
-    # y todos los argumentos del stack, con excepción de los primeros 4 que están en $a0-$a3
+    # y todos los argumentos del stack, con excepción de los primeros 4 que están en $a0-$a2
     # es decir 4 * (1 + 1 + temporales + (totalArgs - argumentsRegisters))
     
     
-    # Si es uno de los primeros argumentos, está en $a0-$a3
+    # Si es uno de los primeros argumentos, está en $a0-$a2
     if argNumber < len(argumentRegisters):
       
       # Guardar en un ubicación correspondiente a la "variable" del argumento
@@ -2056,8 +2100,8 @@ class AssemblyGenerator:
       self.saveRegisterValueInMemory(valueAddr, value)
     
     # Lo que se retorna es la dirección de memoria del heap
-    # Cargar dirección de heap a $v1: los valores de funciones retornan siempre ahi
-    self.addAssemblyCode(f"lw $v1, {self.getOffset(value)}({self.getBasePointer(value)})")
+    # Cargar dirección de heap a $v0: los valores de funciones retornan siempre ahi
+    self.addAssemblyCode(f"lw $v0, {self.getOffset(value)}({self.getBasePointer(value)})")
     
     # Saltar a la etiqueta de retorno
     currentFunctionName = self.activeFunctions[-1]
@@ -2075,9 +2119,9 @@ class AssemblyGenerator:
     
     destination = instruction.result
     
-    # Lo que se obtiene de $v1 es la dirección de memoria del heap
+    # Lo que se obtiene de $v0 es la dirección de memoria del heap
     # Se sobreescribe en la dirección de destination
-    self.addAssemblyCode(f"sw $v1, {self.getOffset(destination)}({self.getBasePointer(destination)})")    
+    self.addAssemblyCode(f"sw $v0, {self.getOffset(destination)}({self.getBasePointer(destination)})")    
     
     # El nuevo valor está solo en memoria, no en registros.
     # Actualizar descriptores
@@ -2125,7 +2169,7 @@ class AssemblyGenerator:
         
         self.addAssemblyCode(f"{endStoreParamLabel}:")
     
-    # Si es uno de los primeros argumentos, está en $a0-$a3
+    # Si es uno de los primeros argumentos, está en $a0-$a2
     # Lo que se pasa no es el valor, sino la dirección de memoria del heap
     if argIndex < len(argumentRegisters):
       self.addAssemblyCode(f"move {argumentRegisters[argIndex]}, {compilerTemporary[0]}")

@@ -36,6 +36,9 @@ class Scope:
     self.level = level
     self.type = type
     self.id = getUniqueId()
+    
+    # Nivel de anidamiento de funciones (0 = global)
+    self.functionLevel = 0 if parent == None else parent.functionLevel 
 
     self.elements = dict()
     self.functions = dict() # Deberá ser {name: [FunctionType]}
@@ -53,7 +56,14 @@ class Scope:
       self.sharedOffset = parent.sharedOffset
     else:
       self.sharedOffset = SharedOffset()
-
+  
+  def incrementFunctionLevel(self):
+    """
+    Aumenta en un nivel el nivel de anidamiento de funciones.
+    """
+    self.functionLevel += 1
+    
+    
   def addFunction(self, functionObj):
     """
     Crea una definición de función y la agrega a la lista de funciones del scope
@@ -95,12 +105,12 @@ class Scope:
     self.elements[name] = classObj
 
   def addObject(self, name, type):
-    object = ObjectType(name, type, self.id)
+    object = ObjectType(name, type, self)
     self.elements[name] = object
     return object
     
   def addTemporary(self, name, type = AnyType()):
-    temp = ObjectType(name, type, self.id)
+    temp = ObjectType(name, type, self)
     self.temporaries[name] = temp
     return temp
 
@@ -382,6 +392,7 @@ class Scope:
 class SymbolTable:
 
   def __init__(self):
+    
     self.globalScope = Scope(None, 0, ScopeType.GLOBAL)
     self.currentScope = self.globalScope
 

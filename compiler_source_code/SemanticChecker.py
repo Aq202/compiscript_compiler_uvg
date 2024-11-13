@@ -412,6 +412,9 @@ class SemanticChecker(CompiscriptListener):
         # Si es una función o constructor, el offset se reinicia y se comparte con hijos
         blockScope.restartOffset()
         
+        # Aumentar el nivel de anidamiento de funciones
+        blockScope.incrementFunctionLevel()
+        
 
       # Intenta obtener la referencia a una función de parametros proveidos por nodo superior
       # Si es asi, se le asigna el scope del bloque a la definición de la función

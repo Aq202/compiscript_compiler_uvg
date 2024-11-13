@@ -41,11 +41,12 @@ class Register:
     return f"${self.type.value}{self.number}"
   
 zero = Register(RegisterTypes.zero, None)
-valueReturn = tuple(Register(RegisterTypes.valueReturn, i) for i in range(2))
-arguments = tuple(Register(RegisterTypes.arguments, i) for i in range(4))
-temporary = tuple(Register(RegisterTypes.temporary, i) for i in range(8))
+valueReturn = tuple(Register(RegisterTypes.valueReturn, i) for i in range(1))
+arguments = tuple(Register(RegisterTypes.arguments, i) for i in range(3))
+temporary = tuple(Register(RegisterTypes.temporary, i) for i in range(7))
 saved = tuple(Register(RegisterTypes.saved, i) for i in range(8))
 compilerTemporary = tuple(Register(RegisterTypes.temporary, i) for i in range(8,10))
+reservedCompilerTemporary = (Register(RegisterTypes.valueReturn, 1), Register(RegisterTypes.arguments, 3), Register(RegisterTypes.temporary, 7))
 globalPointer = Register(RegisterTypes.globalPointer, None)
 stackPointer = Register(RegisterTypes.stackPointer, None)
 framePointer = Register(RegisterTypes.framePointer, None)

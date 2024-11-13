@@ -76,6 +76,13 @@ class FunctionType:
       self.blockReturnTypeChange = False
       self.isMethod = False
       self.id = uuid.uuid4().hex[:6]
+      
+    def getFunctionLevel(self):
+      """
+      Retorna el nivel de anidamiento de la función en la que se encuentra el objeto.
+      Si es una variable global, retorna 0.
+      """
+      return self.bodyScope.functionLevel
     
     def getBodyOffset(self):
       return self.bodyScope.getOffset()
@@ -356,6 +363,7 @@ class ObjectType:
     type: tipo del objeto (debe ser la clase del objeto, ya sea primitivo o uno compuesto)
     reference: si el objeto actua como una variable heredada a un scope hijo, guarda referencia al objeto
     en su scope padre. Si la referencia es None significa que es un objeto original.
+    scope: referencia al scope en el que se encuentra el objeto.
     """
     self.name = name
     self.type = type
@@ -398,20 +406,27 @@ class ObjectType:
     self.offset = offset
     self.size = size
     self.baseType = baseType
+    
+  def getFunctionLevel(self):
+    """
+    Retorna el nivel de anidamiento de la función en la que se encuentra el objeto.
+    Si es una variable global, retorna 0.
+    """
+    return self.scope.functionLevel
 
   def __eq__(self, value: object) -> bool:
     """
     Sobreescribir el operador de igualdad para comparar si dos objetos son iguales.
     Se considera que dos objetos son iguales si tienen el mismo nombre y scope.
     """
-    return isinstance(value, ObjectType) and self.name == value.name and self.scope == value.scope
+    return isinstance(value, ObjectType) and self.name == value.name and self.scope.id == value.scope.id
   
   def __hash__(self):
-    return hash((self.name, self.scope))
+    return hash((self.name, self.scope.id))
   
   def __repr__(self):
     reference = self.reference if self.reference != self else "ObjectType(SELF)"
-    repr = [f"name={self.name}", f"scope={self.scope}"]
+    repr = [f"name={self.name}", f"scope={self.scope.id}"]
     if reference != None:
       repr.append(f"reference={reference}")
     if self.type != None and not self.type.strictEqualsType(AnyType):
