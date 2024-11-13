@@ -1918,8 +1918,10 @@ class AssemblyGenerator:
     value = instruction.arg1
     destination = instruction.result
     
+    isAny = not value.strictEqualsType(BoolType)
+    
     # Obtener valor a negar en registro
-    valueReg = self.getValueInRegister(value)
+    valueReg = self.getValueInRegister(value, updateDescriptors=(not isAny), typeId=intId)
     
     # Obtener ubicación de destino
     destinationReg = self.getRegister(objectToSave=destination, ignoreRegisters=[valueReg])

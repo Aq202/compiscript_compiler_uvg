@@ -1144,16 +1144,18 @@ class IntermediateCodeGenerator():
     
     operation = ctx.getChild(0).getText()
     operand = ctx.getChild(1).addr
-    temp = self.newTemp(ctx.type)
+    
     
     
     if operation == "-":
       # Operador unario negativo. -X
+      temp = self.newTemp(ctx.type.getType())
       ctx.code.concat(SingleInstruction(result=temp, arg1=operand, operator=NEG))
 
     else:
       # Operador unario not
       # 1 XOR 1 = 0, 0 XOR 1 = 1
+      temp = self.newTemp(BoolType())
       ctx.code.concat(SingleInstruction(result=temp, arg1=operand, operator=NOT, operatorFirst=True))
       
     ctx.addr = temp
