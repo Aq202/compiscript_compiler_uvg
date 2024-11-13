@@ -163,7 +163,7 @@ class AssemblyGenerator:
     Guarda el valor de un registro en memoria, en la ubicación correspondiente al objeto.
     Si es un number guarda el valor del numero en el heap, es decir, objectStatic->heapAddress->storeValue.
     
-    Modifica valores de $a0, $a1, $a2, $v0, $f12, $a3 (reservedCompilerTemporary[2]).
+    Modifica valores de $a0, $a1, $a2, $v0, $f12, reservedCompilerTemporary[1].
     """
     
     if object.strictEqualsType((IntType, BoolType, NilType)) or typeId == intId:
@@ -208,9 +208,9 @@ class AssemblyGenerator:
       self.addAssemblyCode(f"{saveIntRegLabel}:")
       intReg = register
       if register.type not in (RegisterTypes.temporary, RegisterTypes.saved):
-        # Mover a registro entero: $a3
-        intReg = reservedCompilerTemporary[2]
-        self.addAssemblyCode(f"move {reservedCompilerTemporary[2]}, {register}")
+        # Mover a registro entero
+        intReg = reservedCompilerTemporary[1]
+        self.addAssemblyCode(f"move {reservedCompilerTemporary[1]}, {register}")
       self.saveIntRegisterValueInMemory(intReg, object)
       self.addAssemblyCode(f"j {endSaveRegLabel}")
       
@@ -238,7 +238,7 @@ class AssemblyGenerator:
     
     @return: El registro disponible o adecuado para guardar el objeto.
     
-    Modifica: $a0, $a1, $a2, $v0, $f12, $a3 (reservedCompilerTemporary[2]).
+    Modifica: $a0, $a1, $a2, $v0, $f12, reservedCompilerTemporary[2].
     """
     
     # Si el objeto a guardar ya está en un registro, retornarlo
@@ -416,6 +416,11 @@ class AssemblyGenerator:
     return address
   
   def freeAllRegisters(self, updateDescriptors=True, saveValues=True):
+    """
+    Liberar todos los registros, guardando los valores en memoria si se desea.
+    
+    Si se guarda memoria modifica: $a0, $a1, $a2, $v0, $f12, reservedCompilerTemporary[1].
+    """
     
     usedRegisters = self.registerDescriptor.getUsedRegisters()
     
@@ -2003,6 +2008,8 @@ class AssemblyGenerator:
     functionLevel = functionDef.getFunctionLevel()
     
     # Limpiar descriptores de registros (funciones son ambiguas)
+    # Este código no se ejecuta con cada llamada de la función, es exclusivo del análisis de la 
+    # declaración de la función
     self.freeAllRegisters()
     
     self.activeFunctions.append(functionName) # Inicia el contexto de la función
@@ -2013,18 +2020,8 @@ class AssemblyGenerator:
     # Añadir etiqueta de inicio de función
     self.addAssemblyCode(f"{functionName}:")
     
-    # En este punto ya están guardados los parametros 1-4 en $a0-$a2 y el resto en el stack
-    # Ahora guardar todos los registros temporales
-    for reg in temporaryRegisters:
-      self.addAssemblyCode(f"subu $sp, $sp, 4 # Push de registro temporal {reg}")
-      self.addAssemblyCode(f"sw {reg}, 0($sp)  # Guardar registro temporal {reg}")
-      
-    for reg in floatTemporaryRegisters:
-      self.addAssemblyCode(f"subu $sp, $sp, 4 # Push de registro temporal {reg}")
-      self.addAssemblyCode(f"s.s {reg}, 0($sp)  # Guardar registro temporal {reg}")
-      
-    self.freeTemporaryRegisters() # Limpiar registros temporales en descriptores
-      
+    # En este punto ya están guardados los parametros en el stack
+    
     # Guardar dirección de retorno
     self.addAssemblyCode(f"subu $sp, $sp, 4 # Push de dirección de retorno")
     self.addAssemblyCode(f"sw $ra, 0($sp)  # Guardar dirección de retorno")
@@ -2054,6 +2051,10 @@ class AssemblyGenerator:
     # Agregar etiqueta a la que apuntan los returns para ejecutar desmontaje de registro de activación
     self.addAssemblyCode(f"{returnFunctionPrefix}_{functionName}:")
     
+    # Limpiar registros y descriptores que fueron modificados en la función (saliendo región ambigua)
+    # Al salir de una función se debe considerar que todos los registros fueron vaciados
+    self.freeAllRegisters()
+    
     # Mover $sp a $fp
     self.addAssemblyCode(f"move $sp, $fp")
     
@@ -2067,15 +2068,6 @@ class AssemblyGenerator:
     # Hacer pop de retorno
     self.addAssemblyCode(f"lw $ra, 0($sp)  # Hacer pop de dirección de retorno")
     self.addAssemblyCode(f"addu $sp, $sp, 4")
-    
-    # Hacer pop de registros temporales en orden inverso
-    for reg in tuple(reversed(floatTemporaryRegisters)):
-      self.addAssemblyCode(f"l.s {reg}, ($sp)  # Hacer pop de registro temporal {reg}")
-      self.addAssemblyCode(f"addu $sp, $sp, 4")
-      
-    for reg in tuple(reversed(temporaryRegisters)):
-      self.addAssemblyCode(f"lw {reg}, ($sp)  # Hacer pop de registro temporal {reg}")
-      self.addAssemblyCode(f"addu $sp, $sp, 4")
       
     
     # Hacer pop de argumentos
@@ -2091,10 +2083,6 @@ class AssemblyGenerator:
     
     self.activeFunctions.pop() # Sacar función actual de funciones activas
     
-    # Limpiar registros temporales en descriptores
-    # Valores ya no se guardan en memoria
-    self.freeTemporaryRegisters() 
-    
     
   def translateGetArgInstruction(self, instruction):
     
@@ -2102,19 +2090,18 @@ class AssemblyGenerator:
     totalArgs = int(instruction.arg2)
     destination = instruction.result
     
-    # Para llegar al inicio del frame, se debe sumar el tamaño de $fp, $ra, todos los temporales
-    # y todos los argumentos del stack, con excepción de los primeros 4 que están en $a0-$a2
-    # es decir 4 * (1 + 1 + temporales + (totalArgs - argumentsRegisters))
+    # Para llegar al inicio del frame, se debe sumar el tamaño de $fp, functionLevel, $ra, 
+    # y todos los argumentos del stack es decir 4 * (1 + 1 + 1 + totalArgs)
     
+    # Calcular top position
+    topPosition = 4 * (3 + totalArgs)
     
-    # Si es uno de los primeros argumentos, está en $a0-$a2
-    if argNumber < len(argumentRegisters):
-      
-      # Guardar en un ubicación correspondiente a la "variable" del argumento
-      self.addAssemblyCode(f"sw {argumentRegisters[argNumber]}, {self.getOffset(destination)}({self.getBasePointer(destination)})")
-      return 
+    # Calcular offset (se resta 4 incluso a argumento 0, pues el inicio del bloque es desde abajo)
+    offset = topPosition - 4 * (argNumber + 1)
     
-    raise NotImplementedError("No se permite usar más de 4 argumentos aún")
+    self.addAssemblyCode(f"lw {compilerTemporary[0]}, {offset}($fp)  # Cargar argumento {argNumber}")
+    self.addAssemblyCode(f"sw {compilerTemporary[0]}, {self.getOffset(destination)}({self.getBasePointer(destination)})  # Guardar argumento en destino")
+    
   
 
   def translateReturnInstruction(self, instruction):
@@ -2127,8 +2114,8 @@ class AssemblyGenerator:
       self.saveRegisterValueInMemory(valueAddr, value)
     
     # Lo que se retorna es la dirección de memoria del heap
-    # Cargar dirección de heap a $v0: los valores de funciones retornan siempre ahi
-    self.addAssemblyCode(f"lw $v0, {self.getOffset(value)}({self.getBasePointer(value)})")
+    # Cargar dirección de heap a $v1: los valores de funciones retornan siempre ahi
+    self.addAssemblyCode(f"lw $v1, {self.getOffset(value)}({self.getBasePointer(value)})")
     
     # Saltar a la etiqueta de retorno
     currentFunctionName = self.activeFunctions[-1]
@@ -2139,6 +2126,9 @@ class AssemblyGenerator:
     functionDef = instruction.arg1
     functionName = functionDef.getUniqueName()
     
+    # Limpiar registros y descriptores pues variables podrían modificarse dentro de función
+    self.freeAllRegisters()
+    
     # Instruccion para realizar el salto a la función
     self.addAssemblyCode(f"jal {functionName}")
     
@@ -2146,9 +2136,9 @@ class AssemblyGenerator:
     
     destination = instruction.result
     
-    # Lo que se obtiene de $v0 es la dirección de memoria del heap
+    # Lo que se obtiene de $v1 es la dirección de memoria del heap
     # Se sobreescribe en la dirección de destination
-    self.addAssemblyCode(f"sw $v0, {self.getOffset(destination)}({self.getBasePointer(destination)})")    
+    self.addAssemblyCode(f"sw $v1, {self.getOffset(destination)}({self.getBasePointer(destination)})")    
     
     # El nuevo valor está solo en memoria, no en registros.
     # Actualizar descriptores
@@ -2165,7 +2155,6 @@ class AssemblyGenerator:
   def translateParamInstruction(self, instruction):
     
     value = instruction.arg1
-    argIndex = int(instruction.arg2)
     
     # Obtener dirección de memoria del heap que contiene el valor
     self.addAssemblyCode(f"lw {compilerTemporary[0]}, {self.getOffset(value)}({self.getBasePointer(value)})")
@@ -2196,16 +2185,11 @@ class AssemblyGenerator:
         
         self.addAssemblyCode(f"{endStoreParamLabel}:")
     
-    # Si es uno de los primeros argumentos, está en $a0-$a2
     # Lo que se pasa no es el valor, sino la dirección de memoria del heap
-    if argIndex < len(argumentRegisters):
-      self.addAssemblyCode(f"move {argumentRegisters[argIndex]}, {compilerTemporary[0]}")
-      return
-
-    else:
-      raise NotImplementedError("No se permite usar más de 4 argumentos aún")
+    # Hacer push en el stack el parametro
+    self.addAssemblyCode(f"subu $sp, $sp, 4  # Hacer push de argumento")
+    self.addAssemblyCode(f"sw {compilerTemporary[0]}, 0($sp)")
     
-  
   def translateMallocInstruction(self, instruction):
     
     size = int(instruction.arg1)
