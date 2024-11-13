@@ -1,12 +1,13 @@
 from assemblyDescriptors import RegisterDescriptor, AddressDescriptor
 from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary, temporary as temporaryRegisters, floatTemporary as floatTemporaryRegisters, arguments as argumentRegisters, floatArguments as floatArgumentRegisters, reservedCompilerTemporary
-from compoundTypes import ObjectType
-from IntermediateCodeTokens import STATIC_POINTER, STACK_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR,PRINT_ANY, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT, INT_TO_STR, NOT, REGISTER_FREE, GHOST_REGISTER_FREE, FUNCTION, END_FUNCTION, GET_ARG, RETURN, CALL, RETURN_VAL, PARAM, FLOAT_TO_STR, STORE_CONST, CONST_POINT_CHAR
+from compoundTypes import ObjectType, ClassSelfReferenceType, InstanceType
+from IntermediateCodeTokens import STATIC_POINTER, STACK_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR,PRINT_ANY, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT, INT_TO_STR, NOT, REGISTER_FREE, GHOST_REGISTER_FREE, FUNCTION, END_FUNCTION, GET_ARG, RETURN, CALL, RETURN_VAL, PARAM, FLOAT_TO_STR, STORE_CONST, CONST_POINT_CHAR, MALLOC
 from IntermediateCodeInstruction import SingleInstruction, ConditionalInstruction
 from primitiveTypes import FloatType, IntType, StringType, BoolType, NilType
 from utils.decimalToIEEE754 import decimal_to_ieee754
 from utils.consoleColors import yellow_text
 from utils.getUniqueId import getUniqueId
+from Offset import Offset
 
 numberSize = 4
 stringSize = 255
@@ -15,6 +16,7 @@ intAsStrSize = 11 # Tamaño máximo de un entero en string (+ null)
 intId = 1
 floatId = 2
 stringId = 3
+objectInstanceId = 4
 
 skipFunctionPrefix = "skip"
 returnFunctionPrefix = "return"
@@ -144,19 +146,16 @@ class AssemblyGenerator:
     
     self.addAssemblyCode(f"s.s {register}, 4($v0)")
     
-  def saveStringRegisterValueInMemory(self, register, object):
+  def saveHeapAddressInMemory(self, heapAddressReg, object):
     """
-    Guarda el valor de un registro en memoria, en la ubicación correspondiente al objeto.
-    Guarda el valor del numero en el heap, es decir, objectStatic->heapAddress->storeValue.
-    
-    Modifica valores de $a0, $a1, $a2, $v0.
+    Guarda el inicio de un bloque de memoria (en el heap) en la dirección correspondiente al objeto.
     """
     
     objectBasePointer = self.getBasePointer(object)
     objectOffset = self.getOffset(object)
     # Lo que se guarda en el registro, es el inicio del bloque de memoria de la cadena
     # Guardar en memoria estática dicha dirección
-    self.addAssemblyCode(f"sw {register}, {objectOffset}({objectBasePointer}) # Guardar inicio de string")
+    self.addAssemblyCode(f"sw {heapAddressReg}, {objectOffset}({objectBasePointer}) # Guardar inicio de string")
     
   
   def saveRegisterValueInMemory(self, register, object, typeId = None):
@@ -174,7 +173,11 @@ class AssemblyGenerator:
       self.saveFloatRegisterValueInMemory(register, object)
       
     elif object.strictEqualsType(StringType) or typeId == stringId:
-      self.saveStringRegisterValueInMemory(register, object)
+      self.saveHeapAddressInMemory(register, object)
+      
+    elif object.strictEqualsType((ClassSelfReferenceType, InstanceType)) or typeId == objectInstanceId:
+      # Guardar dirección de instancia en memoria estática
+      self.saveHeapAddressInMemory(register, object)
       
     else:
       # Caso any, se debe realizar una verificación del tipo en tiempo de ejecución
@@ -197,8 +200,8 @@ class AssemblyGenerator:
       self.addAssemblyCode(f"li $a1, {floatId}")
       self.addAssemblyCode(f"beq $a0, $a1, {saveFloatRegLabel}")
       
-      # Por defecto es un string
-      self.saveStringRegisterValueInMemory(register, object)
+      # Por defecto es un string o instanceType
+      self.saveHeapAddressInMemory(register, object)
       self.addAssemblyCode(f"j {endSaveRegLabel}")
       
       # Guardar como int
@@ -346,15 +349,34 @@ class AssemblyGenerator:
         # Se encontró el functionLevel correcto, retornarlo como base pointer          
         return reservedCompilerTemporary[1]
     
+    elif isinstance(object, Offset):
+      # Se está haciendo un desplazamiento sobre un objeto en el heap
+      base = object.base
+      offset = object.offset
+      
+      self.addAssemblyCode("nop # Obtener base pointer de objeto Offset")
+      # Obtiene la dirección base. 
+      # Se guarda en el registro el inicio de la dirección del heap sobre la cuál se hace el desplazamiento
+      self.addAssemblyCode(f"lw {reservedCompilerTemporary[0]}, {self.getOffset(base)}({self.getBasePointer(base)})")
+      
+      return reservedCompilerTemporary[0]
+      
+    
     raise Exception("No se puede obtener el base pointer de este objeto.", str(object))
   
   def getOffset(self, object):
     """
     Devuelve el desplazamiento (offset) correspondiente al objeto.
+    
+    Si el objeto es de tipo Offset, se devuelve cero, pues al utilizar getBasePointer se realiza
+    el desplazamiento correspondiente.
     """
     
     if isinstance(object, ObjectType):
       return object.offset if object.baseType != STACK_POINTER else (object.offset * -1 - 4)
+    
+    if isinstance(object, Offset):
+      return object.offset
     
     raise Exception("No se puede obtener el offset de este objeto.", str(object))
   
@@ -372,7 +394,8 @@ class AssemblyGenerator:
         # Cargar valor final (offset de 4 para omitir el byte de tipo)
         self.addAssemblyCode(f"l.s {address}, 4({compilerTemporary[0]})")
         
-      elif value.strictEqualsType(StringType) or typeId == stringId:
+      elif (value.strictEqualsType(StringType) or typeId == stringId) or \
+            (value.strictEqualsType((ClassSelfReferenceType, InstanceType)) or typeId == objectInstanceId):
         
         address = self.getRegister(objectToSave=value, ignoreRegisters=ignoreRegisters) # Obtener registro entero
         # Cargar dirrección del bloque de memoria en el heap
@@ -552,6 +575,10 @@ class AssemblyGenerator:
       
       elif instruction.operator == PRINT_ANY:
         self.translateAnyPrint(instruction)
+        return
+      
+      elif instruction.operator == MALLOC:
+        self.translateMallocInstruction(instruction)
         return
 
     elif isinstance(instruction, ConditionalInstruction):
@@ -2177,3 +2204,14 @@ class AssemblyGenerator:
 
     else:
       raise NotImplementedError("No se permite usar más de 4 argumentos aún")
+    
+  
+  def translateMallocInstruction(self, instruction):
+    
+    size = int(instruction.arg1)
+    destination = instruction.result
+    
+    # Reservar memoria en heap. +4 para guardar el tipo
+    address = self.createHeapMemory(size + 4, destination)
+    
+    self.saveTypeInHeapMemory(intId, address)

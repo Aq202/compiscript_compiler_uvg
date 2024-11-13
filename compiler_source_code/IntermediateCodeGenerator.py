@@ -458,7 +458,8 @@ class IntermediateCodeGenerator():
     if scope.isMethodScope():
         # Si es un método, crear temporal que guarda referencia a this y guardarla en params
         
-        thisTemp = self.newTemp()
+        parentClass = scope.getParentClass()
+        thisTemp = self.newTemp(ClassSelfReferenceType(parentClass))
 
         # Guardar referencia a this en arbol de parámetros
         _, currentParams = self.thisReferenceParams.initNodeParams()
@@ -672,7 +673,8 @@ class IntermediateCodeGenerator():
         
         # Realizar offset relativo a la dirección de memoria del objeto
         propertyIndex = classSelfReference.getPropertyIndex(identifier)
-        propertyPosition = Offset(thisTemp, propertyIndex * MEM_ADDR_SIZE)
+        propertyType = classSelfReference.getProperty(identifier)
+        propertyPosition = Offset(thisTemp, propertyIndex * MEM_ADDR_SIZE, propertyType)
         
         # Asignar valor a propiedad en CI
         ctx.code.concat(SingleInstruction(result=propertyPosition, arg1=valueAddr, operator=STRICT_ASSIGN))
@@ -685,7 +687,8 @@ class IntermediateCodeGenerator():
         
         # Realizar offset relativo a la dirección de memoria del objeto
         propertyIndex = instanceType.getPropertyIndex(identifier)
-        propertyPosition = Offset(instanceAddr, propertyIndex * MEM_ADDR_SIZE)
+        propertyType = instanceType.getProperty(identifier)
+        propertyPosition = Offset(instanceAddr, propertyIndex * MEM_ADDR_SIZE, propertyType)
         
         # Asignar valor a propiedad en CI
         ctx.code.concat(SingleInstruction(result=propertyPosition, arg1=valueAddr, operator=STRICT_ASSIGN))
@@ -1083,7 +1086,7 @@ class IntermediateCodeGenerator():
     arrayCode = SingleInstruction(result=arrayAddr, arg1=array_size, operator=MALLOC)
     
     for index, expression in enumerate(ctx.expression()):
-      arrayPosition = Offset(arrayAddr, index * MEM_ADDR_SIZE) # Dirección de memoria del elemento en el array
+      arrayPosition = Offset(arrayAddr, index * MEM_ADDR_SIZE, AnyType()) # Dirección de memoria del elemento en el array
       arrayCode.concat(SingleInstruction(result=arrayPosition, arg1=expression.addr))
 
     ctx.addr = arrayAddr
@@ -1097,9 +1100,9 @@ class IntermediateCodeGenerator():
     if not self.continueCodeGeneration(): return
     
     instanceType = ctx.type
-    
+        
     # Crear en código intermedio el bloque de memoria para el objeto
-    instanceAddr = self.newTemp() # Temp guarda dirección de inicio de objeto
+    instanceAddr = self.newTemp(instanceType) # Temp guarda dirección de inicio de objeto
     instanceCode = SingleInstruction(result=instanceAddr, arg1=MAX_PROPERTIES * MEM_ADDR_SIZE, operator=MALLOC)
     
     # Si tiene constructor, añadir código de constructor
@@ -1290,7 +1293,7 @@ class IntermediateCodeGenerator():
                 propertyIndex = instance.getPropertyIndex(propId)
                 
               # Realizar offset relativo a la dirección de memoria del objeto
-              propertyPosition = Offset(nodeAddr, propertyIndex * MEM_ADDR_SIZE)
+              propertyPosition = Offset(nodeAddr, propertyIndex * MEM_ADDR_SIZE, nodeType)
               nodeAddr = propertyPosition
           
               
@@ -1329,7 +1332,7 @@ class IntermediateCodeGenerator():
             code.concat(arrayInstr)
           
           # Asignar array[arrayShift] a addr
-          arrayElement = Offset(arrayBase, arrayShiftTemp)
+          arrayElement = Offset(arrayBase, arrayShiftTemp, AnyType())
                 
           nodeAddr = arrayElement
           nodeType = AnyType()

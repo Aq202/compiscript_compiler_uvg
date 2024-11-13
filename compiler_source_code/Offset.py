@@ -1,9 +1,11 @@
 from utils.consoleColors import yellow_text
-class Offset:
-  def __init__(self, base, offset):
+from DataType import DataType
+class Offset(DataType):
+  def __init__(self, base, offset,type):
     """
     base: Variable que contiene la dirección de memoria base
     offset: variable que contiene el desplazamiento de la dirección de memoria
+    Type: Tipo o tipos de datos que se encuentran en la dirección de memoria
     
     Ejemplo: 
     t0 = 0x7ffee2b8c4fc
@@ -12,6 +14,19 @@ class Offset:
     """
     self.base = base
     self.offset = offset
-    
+    self.type = type
+  
+  def getType(self):
+    return self.type
+  
+  def equalsType(self, __class__):
+    return self.type.equalsType(__class__)
+  
+  def strictEqualsType(self, __class__):
+    return self.type.strictEqualsType(__class__)
+  
   def __repr__(self) -> str:
     return f"{self.base}{yellow_text('[')}{yellow_text(self.offset)}{yellow_text(']')}"
+  
+  def __str__(self) -> str:
+    return f"{str(self.base)}[{self.offset}]"
