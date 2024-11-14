@@ -52,7 +52,7 @@ stackPointer = Register(RegisterTypes.stackPointer, None)
 framePointer = Register(RegisterTypes.framePointer, None)
 returnAddress = Register(RegisterTypes.returnAddress, None)
 
-floatTemporary = tuple(Register(RegisterTypes.floatTemporary, i) for i in range(9))
+floatTemporary = tuple(Register(RegisterTypes.floatTemporary, i) for i in range(1,9))
 floatCompilerTemporary = tuple(Register(RegisterTypes.floatTemporary, i) for i in range(9, 11))
 floatSaved = tuple(Register(RegisterTypes.floatSaved, i) for i in range(20,32))
 floatArguments = tuple(Register(RegisterTypes.floatTemporary, i) for i in range(12, 16))

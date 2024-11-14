@@ -1,7 +1,7 @@
 from assemblyDescriptors import RegisterDescriptor, AddressDescriptor, allowTypeInDescriptor
 from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary, temporary as temporaryRegisters, floatTemporary as floatTemporaryRegisters, arguments as argumentRegisters, floatArguments as floatArgumentRegisters, reservedCompilerTemporary
 from compoundTypes import ObjectType, ClassSelfReferenceType, InstanceType
-from IntermediateCodeTokens import STATIC_POINTER, STACK_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR,PRINT_ANY, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT, INT_TO_STR, NOT, REGISTER_FREE, GHOST_REGISTER_FREE, FUNCTION, END_FUNCTION, GET_ARG, RETURN, CALL, RETURN_VAL, PARAM, FLOAT_TO_STR, STORE_CONST, CONST_POINT_CHAR, MALLOC, INPUT_STRING
+from IntermediateCodeTokens import STATIC_POINTER, STACK_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR,PRINT_ANY, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT, INT_TO_STR, NOT, REGISTER_FREE, GHOST_REGISTER_FREE, FUNCTION, END_FUNCTION, GET_ARG, RETURN, CALL, RETURN_VAL, PARAM, FLOAT_TO_STR, STORE_CONST, CONST_POINT_CHAR, MALLOC, INPUT_STRING, INPUT_INT, INPUT_FLOAT
 from IntermediateCodeInstruction import SingleInstruction, ConditionalInstruction
 from primitiveTypes import FloatType, IntType, StringType, BoolType, NilType
 from utils.decimalToIEEE754 import decimal_to_ieee754
@@ -621,6 +621,14 @@ class AssemblyGenerator:
       
       elif instruction.operator == INPUT_STRING:
         self.translateInputStringInstruction(instruction)
+        return
+      
+      elif instruction.operator == INPUT_INT:
+        self.translateInputIntInstruction(instruction)
+        return
+      
+      elif instruction.operator == INPUT_FLOAT:
+        self.translateInputFloatInstruction(instruction)
         return
 
     elif isinstance(instruction, ConditionalInstruction):
@@ -2308,3 +2316,46 @@ class AssemblyGenerator:
     self.addAssemblyCode(f"la $a0 1({compilerTemporary[0]})") # 1 para saltar tipo
     self.addAssemblyCode(f"li $a1, {size + 1}  # Tamaño máximo de string")
     self.addAssemblyCode("syscall")
+    
+  def translateInputIntInstruction(self, instruction):
+    
+    destination = instruction.result
+    
+    # Guardar espacio en heap para almacenar número
+    address = self.createHeapMemory(numberSize + 4, destination)
+    
+    # Guardar tipo
+    self.saveTypeInHeapMemory(intId, address)
+    
+    # Mover a registro seguro
+    self.addAssemblyCode(f"move {compilerTemporary[0]}, {address}")
+    
+    # Syscall para leer int
+    self.addAssemblyCode(f"li $v0, 5  # Leer int")
+    self.addAssemblyCode("syscall")
+    
+    # Guardar el entero leído
+    self.addAssemblyCode(f"sw $v0, 4({compilerTemporary[0]})") # 4 para saltar tipo
+    
+    
+  def translateInputFloatInstruction(self, instruction):
+    
+    destination = instruction.result
+    
+    # Guardar espacio en heap para almacenar número
+    address = self.createHeapMemory(numberSize + 4, destination)
+    
+    # Guardar tipo
+    self.saveTypeInHeapMemory(floatId, address)
+    
+    # Mover a registro seguro
+    self.addAssemblyCode(f"move {compilerTemporary[0]}, {address}")
+    
+    # Syscall para leer int
+    self.addAssemblyCode(f"li $v0, 6  # Leer float")
+    self.addAssemblyCode("syscall")
+    
+    # Guardar el entero leído
+    self.addAssemblyCode(f"s.s $f0, 4({compilerTemporary[0]})") # 4 para saltar tipo
+    
+    
