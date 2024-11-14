@@ -1174,15 +1174,13 @@ class AssemblyGenerator:
       
       self.addAssemblyCode(f"{endAssignmentLabel}:")
     
-    # Si variable result no es any, actualizar descriptores
-    if not isResultAny:
     # Eliminar valor de registro en descriptores
-      resultPrevAddr = self.addressDescriptor.getAddress(result)
-      if isinstance(resultPrevAddr, Register):
-        # Si era un registro, eliminar el valor anterior de este
-        self.registerDescriptor.removeValueFromRegister(register=resultPrevAddr, value=result)
+    resultPrevAddr = self.addressDescriptor.getAddress(result)
+    if isinstance(resultPrevAddr, Register):
+      # Si era un registro, eliminar el valor anterior de este
+      self.registerDescriptor.removeValueFromRegister(register=resultPrevAddr, value=result)
         
-      self.addressDescriptor.replaceAddress(object=result, address=result) # Eliminar registros de address de result
+    self.addressDescriptor.freeAddress(result) # Eliminar registros de address de result
     
   def negativeOperationWithType(self, instruction):
     
@@ -1999,6 +1997,15 @@ class AssemblyGenerator:
     if len(params) < 6:
       raise Exception(f"Los registros temporales no pueden ser repetidos en float to str operation: resultStringReg={resultStringReg}, floatNumberReg={floatNumberReg}, intTempReg={intTempReg}, decimalTempReg={decimalTempReg}, tempStringResultReg={tempStringResultReg}, tempStringReg={tempStringReg}")
     
+    # Verificar correcto tipos de registro
+    if floatNumberReg.type not in (RegisterTypes.floatSaved, RegisterTypes.floatTemporary):
+      raise Exception(f"El registro del param floatNumberReg no es de tipo float")
+    
+    intRegs = {"intTempReg": intTempReg, "decimalTempReg": decimalTempReg, "tempStringResultReg": tempStringResultReg, "tempStringReg": tempStringReg}
+    for name, reg in intRegs.items():
+      if reg.type in (RegisterTypes.floatSaved, RegisterTypes.floatTemporary):
+        raise Exception(f"El param {name} no es un registro de tipo int")
+    
     # Obtener parte entera
     self.addAssemblyCode(f"trunc.w.s {floatCompilerTemporary[0]}, {floatNumberReg}  # Obtener parte entera")
     self.addAssemblyCode(f"mfc1 {intTempReg}, {floatCompilerTemporary[0]}")
@@ -2042,15 +2049,15 @@ class AssemblyGenerator:
     destination = instruction.result
     
     # Obtener registros
-    floatNumberReg = self.getValueInRegister(value)
+    floatNumberReg = self.getValueInRegister(value, typeId=floatId, ignorePreviousRegister=True)
     intTempReg = self.getRegister(objectToSave=None, ignoreRegisters=[floatNumberReg])
     decimalTempReg = self.getRegister(objectToSave=None, ignoreRegisters=[floatNumberReg, intTempReg])
     tempStringResultReg = self.getRegister(objectToSave=None, ignoreRegisters=[floatNumberReg, intTempReg, decimalTempReg])
     tempStringReg = self.getRegister(objectToSave=None, ignoreRegisters=[floatNumberReg, intTempReg, decimalTempReg, tempStringResultReg])
-    tempStringReg2 = self.getRegister(objectToSave=None, ignoreRegisters=[floatNumberReg, intTempReg, decimalTempReg, tempStringResultReg, tempStringReg])
+    resultStringReg = self.getRegister(objectToSave=None, ignoreRegisters=[floatNumberReg, intTempReg, decimalTempReg, tempStringResultReg, tempStringReg])
     
-    resultStringReg = self.floatToStrOperation(floatNumberReg, intTempReg, decimalTempReg,
-                                                tempStringResultReg, tempStringReg, tempStringReg2)
+    resultStringReg = self.floatToStrOperation( resultStringReg, floatNumberReg, intTempReg, decimalTempReg,
+                                                tempStringResultReg, tempStringReg)
     
     # Actualizar descriptores
     self.registerDescriptor.replaceValueInRegister(register=resultStringReg, value=destination)

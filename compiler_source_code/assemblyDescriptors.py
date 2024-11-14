@@ -22,6 +22,15 @@ def allowTypeInDescriptor(object):
   
   return False
 
+def verifyRegisterTypeConflict(register, object):
+  """
+  Verificar si el tipo de registro es compatible con el tipo de objeto.
+  """
+  if register.type in (RegisterTypes.floatSaved, RegisterTypes.floatTemporary):
+    return object.getType().strictEqualsType(FloatType)
+  
+  return True
+
 class RegisterDescriptor:
 
   def __init__(self):
@@ -46,6 +55,9 @@ class RegisterDescriptor:
     if not allowTypeInDescriptor(value):
       raise Exception(f"No se pueden guardar valores any en descriptor de registros.", value)
     
+    if not verifyRegisterTypeConflict(register, value):
+      raise Exception(f"El tipo de registro {register} no es compatible con el tipo de objeto {value}.")
+    
     self._registers[register].add(value)
     
   def replaceValueInRegister(self, register, value):
@@ -55,6 +67,9 @@ class RegisterDescriptor:
     
     if not allowTypeInDescriptor(value):
       raise Exception(f"No se pueden guardar valores any en descriptor de registros.", value)
+    
+    if not verifyRegisterTypeConflict(register, value):
+      raise Exception(f"El tipo de registro {register} no es compatible con el tipo de objeto {value}.")
     
     self._registers[register] = {value}
     
@@ -136,6 +151,10 @@ class AddressDescriptor:
     if not allowTypeInDescriptor(object):
       raise Exception(f"No se pueden guardar valores any en descriptor de direcciones.", object)
     
+    # Validar compatibilidad en registros
+    if isinstance(address, Register) and not verifyRegisterTypeConflict(address, object):
+      raise Exception(f"El tipo de registro {address} no es compatible con el tipo de objeto {object}.")
+    
     if not any(object == obj for obj in self._addresses):
       self._addresses[object] = [address]
     
@@ -160,6 +179,10 @@ class AddressDescriptor:
     if not allowTypeInDescriptor(object):
       raise Exception(f"No se pueden guardar valores any en descriptor de direcciones.", object)
     
+    # Validar compatibilidad en registros
+    if isinstance(address, Register) and not verifyRegisterTypeConflict(address, object):
+      raise Exception(f"El tipo de registro {address} no es compatible con el tipo de objeto {object}.")
+    
     self._addresses[object] = [address]
       
   def removeAddress(self, object, address):
@@ -177,6 +200,13 @@ class AddressDescriptor:
     
     addresses = self._addresses[object]
     return addresses[0]
+  
+  def freeAddress(self, object):
+    
+    if not any(object == obj for obj in self._addresses) or len(self._addresses[object]) == 0:
+      return
+    
+    self._addresses[object] = []
   
   def __str__(self) -> str:
     return "\nAddress Descriptor:\n" +  str(self._addresses)
