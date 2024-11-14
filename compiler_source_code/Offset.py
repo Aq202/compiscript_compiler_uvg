@@ -26,7 +26,7 @@ class Offset(DataType):
     return self.type.strictEqualsType(__class__)
   
   def __repr__(self) -> str:
-    return f"{self.base}{yellow_text('[')}{yellow_text(self.offset)}{yellow_text(']')}"
+    return f"Offset({str(self.base)},{self.offset})"
   
   def __str__(self) -> str:
-    return f"{str(self.base)}[{self.offset}]"
+    return f"Offset({str(self.base)},{self.offset})"

@@ -155,7 +155,7 @@ class AssemblyGenerator:
     objectOffset = self.getOffset(object)
     # Lo que se guarda en el registro, es el inicio del bloque de memoria de la cadena
     # Guardar en memoria estática dicha dirección
-    self.addAssemblyCode(f"sw {heapAddressReg}, {objectOffset}({objectBasePointer}) # Guardar inicio de string")
+    self.addAssemblyCode(f"sw {heapAddressReg}, {objectOffset}({objectBasePointer}) # Guardar inicio de bloque de memoria en {object}")
     
   
   def saveRegisterValueInMemory(self, register, object, typeId = None):
@@ -163,7 +163,7 @@ class AssemblyGenerator:
     Guarda el valor de un registro en memoria, en la ubicación correspondiente al objeto.
     Si es un number guarda el valor del numero en el heap, es decir, objectStatic->heapAddress->storeValue.
     
-    Modifica valores de $a0, $a1, $a2, $v0, $f12, reservedCompilerTemporary[1].
+    Modifica valores de $a0, $a1, $a2, $v0, $f12, reservedCompilerTemporary[0].
     """
     
     if object.strictEqualsType((IntType, BoolType, NilType)) or typeId == intId:
@@ -201,16 +201,23 @@ class AssemblyGenerator:
       self.addAssemblyCode(f"beq $a0, $a1, {saveFloatRegLabel}")
       
       # Por defecto es un string o instanceType
-      self.saveHeapAddressInMemory(register, object)
+      intReg = register
+      if register.type in (RegisterTypes.floatSaved, RegisterTypes.floatTemporary):
+        # Mover a registro entero
+        intReg = reservedCompilerTemporary[0]
+        self.addAssemblyCode(f"mfc1 {reservedCompilerTemporary[0]}, {register}")
+        
+      self.saveHeapAddressInMemory(intReg, object)
       self.addAssemblyCode(f"j {endSaveRegLabel}")
       
       # Guardar como int
       self.addAssemblyCode(f"{saveIntRegLabel}:")
       intReg = register
-      if register.type not in (RegisterTypes.temporary, RegisterTypes.saved):
+      if register.type in (RegisterTypes.floatSaved, RegisterTypes.floatTemporary):
         # Mover a registro entero
-        intReg = reservedCompilerTemporary[1]
-        self.addAssemblyCode(f"move {reservedCompilerTemporary[1]}, {register}")
+        intReg = reservedCompilerTemporary[0]
+        self.addAssemblyCode(f"mfc1 {reservedCompilerTemporary[0]}, {register}")
+        
       self.saveIntRegisterValueInMemory(intReg, object)
       self.addAssemblyCode(f"j {endSaveRegLabel}")
       
@@ -376,7 +383,7 @@ class AssemblyGenerator:
       return object.offset if object.baseType != STACK_POINTER else (object.offset * -1 - 4)
     
     if isinstance(object, Offset):
-      return object.offset
+      return object.offset + 4 # Se suma 4 para omitir el byte de tipo
     
     raise Exception("No se puede obtener el offset de este objeto.", str(object))
   
@@ -455,7 +462,7 @@ class AssemblyGenerator:
     Modifica el valor de compilerTemporary[0].
     """
     
-    if typeId not in (intId, floatId, stringId):
+    if typeId not in (intId, floatId, stringId, objectInstanceId):
       raise Exception("Tipo no soportado.", typeId)
     
     self.addAssemblyCode(f"li {compilerTemporary[0]}, {typeId} # Guardar tipo en heap")
@@ -806,9 +813,12 @@ class AssemblyGenerator:
         PLUS: ("add", "add.s"),
         MINUS: ("sub", "sub.s"),
         MULTIPLY: ("mul", "mul.s"),
-        DIVIDE: ("div", "div.s"),
+        DIVIDE: (None, "div.s"),
         MOD: ("remu",)
       }
+    
+    if operation == DIVIDE and not floatOperation:
+      raise Exception("No se puede realizar división entera.")
       
     # Realizar la operación
     if not floatOperation:
@@ -925,15 +935,31 @@ class AssemblyGenerator:
     for i in range(2):
       self.addAssemblyCode(f"lw {compilerTemporary[i]}, {self.getOffset(values[i])}({self.getBasePointer(values[i])})")
       self.addAssemblyCode(f"lw {compilerTemporary[i]}, 4({compilerTemporary[i]})")
+    
+    if operator != DIVIDE:
+      # Realizar la operación
+      self.addArithmeticOperation(tempReg, compilerTemporary[0], compilerTemporary[1], operator, floatOperation=False)
       
-    # Realizar la operación
-    self.addArithmeticOperation(tempReg, compilerTemporary[0], compilerTemporary[1], operator, floatOperation=False)
+      # Guardar resultado en memoria
+      self.addAssemblyCode(f"sw {tempReg}, 4({heapAddress})")
+      
+      # Guardar tipo int en resultado
+      self.saveTypeInHeapMemory(intId, heapAddress)
     
-    # Guardar resultado en memoria
-    self.addAssemblyCode(f"sw {tempReg}, 4({heapAddress})")
-    
-    # Guardar tipo int en resultado
-    self.saveTypeInHeapMemory(intId, heapAddress)
+    else: 
+      # Si la operación es división, ambos valores deben ser convertidos a float
+      for i in range(2):
+        self.addAssemblyCode(f"mtc1 {compilerTemporary[i]}, {floatCompilerTemporary[i]}")
+        self.addAssemblyCode(f"cvt.s.w {floatCompilerTemporary[i]}, {floatCompilerTemporary[i]}")
+        
+      # Realizar la operación
+      self.addArithmeticOperation(floatTempReg, floatCompilerTemporary[0], floatCompilerTemporary[1], operator, floatOperation=True)
+      
+      # Guardar resultado en memoria
+      self.addAssemblyCode(f"s.s {floatTempReg}, 4({heapAddress})")
+      
+      # Guardar tipo float en resultado
+      self.saveTypeInHeapMemory(floatId, heapAddress)
     
     self.addAssemblyCode(f"j {arithEndLabel}")  
     
@@ -2198,4 +2224,4 @@ class AssemblyGenerator:
     # Reservar memoria en heap. +4 para guardar el tipo
     address = self.createHeapMemory(size + 4, destination)
     
-    self.saveTypeInHeapMemory(intId, address)
+    self.saveTypeInHeapMemory(objectInstanceId, address)

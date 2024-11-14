@@ -368,12 +368,12 @@ class IntermediateCodeGenerator():
     if not self.continueCodeGeneration(): return
     ctx.code = self.getChildrenCode(ctx)
     
-    child = ctx.getChild(1)
-    if child.type.strictEqualsType((IntType, BoolType, NilType)):
+    childType = ctx.getChild(1).addr.getType()
+    if childType.strictEqualsType((IntType, BoolType, NilType)):
       ctx.code.concat(SingleInstruction(operator=PRINT_INT, arg1=ctx.expression().addr))
-    elif child.type.strictEqualsType(FloatType):
+    elif childType.strictEqualsType(FloatType):
       ctx.code.concat(SingleInstruction(operator=PRINT_FLOAT, arg1=ctx.expression().addr))
-    elif child.type.strictEqualsType(StringType):
+    elif childType.strictEqualsType(StringType):
       ctx.code.concat(SingleInstruction(operator=PRINT_STR, arg1=ctx.expression().addr))
     else:
       ctx.code.concat(SingleInstruction(operator=PRINT_ANY, arg1=ctx.expression().addr))
