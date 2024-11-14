@@ -1,5 +1,26 @@
 from register import Register, RegisterTypes, temporary, saved, floatTemporary, floatSaved
-from compoundTypes import ObjectType
+from compoundTypes import ObjectType, InstanceType, ClassSelfReferenceType
+from primitiveTypes import StringType, FloatType, IntType, BoolType, NilType
+
+def allowTypeInDescriptor(object):
+  type = object.getType()
+  
+  if type.strictEqualsType(StringType):
+    return True
+  
+  if type.strictEqualsType(FloatType):
+    return True
+  
+  if type.strictEqualsType((IntType, BoolType, NilType)):
+    return True
+  
+  if type.strictEqualsType(InstanceType):
+    return True
+  
+  if type.strictEqualsType(ClassSelfReferenceType):
+    return True
+  
+  return False
 
 class RegisterDescriptor:
 
@@ -22,12 +43,18 @@ class RegisterDescriptor:
     if register not in self._registers:
       raise Exception(f"El registro {register} no existe.")
     
+    if not allowTypeInDescriptor(value):
+      raise Exception(f"No se pueden guardar valores any en descriptor de registros.", value)
+    
     self._registers[register].add(value)
     
   def replaceValueInRegister(self, register, value):
     
     if register not in self._registers:
       raise Exception(f"El registro {register} no existe.")
+    
+    if not allowTypeInDescriptor(value):
+      raise Exception(f"No se pueden guardar valores any en descriptor de registros.", value)
     
     self._registers[register] = {value}
     
@@ -106,6 +133,9 @@ class AddressDescriptor:
     
   def insertAddress(self, object, address):
     
+    if not allowTypeInDescriptor(object):
+      raise Exception(f"No se pueden guardar valores any en descriptor de direcciones.", object)
+    
     if not any(object == obj for obj in self._addresses):
       self._addresses[object] = [address]
     
@@ -127,6 +157,9 @@ class AddressDescriptor:
       self._addresses[object].append(address)
 
   def replaceAddress(self, object, address):
+    if not allowTypeInDescriptor(object):
+      raise Exception(f"No se pueden guardar valores any en descriptor de direcciones.", object)
+    
     self._addresses[object] = [address]
       
   def removeAddress(self, object, address):
