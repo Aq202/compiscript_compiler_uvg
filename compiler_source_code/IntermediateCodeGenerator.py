@@ -612,7 +612,9 @@ class IntermediateCodeGenerator():
     if not self.continueCodeGeneration(): return
     
     printMessage = ctx.getChild(1).getText()
-    code = SingleInstruction(operator=PRINT_STR, arg1=printMessage)
+    messageTemp = self.newTemp(StringType())
+    code = SingleInstruction(result=messageTemp, arg1=Value(printMessage, StringType()), operator=STORE)
+    code.concat(SingleInstruction(operator=PRINT_STR, arg1=messageTemp))
     
     temp = self.newTemp(StringType())
     

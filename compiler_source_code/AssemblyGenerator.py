@@ -1,7 +1,7 @@
 from assemblyDescriptors import RegisterDescriptor, AddressDescriptor, allowTypeInDescriptor
 from register import RegisterTypes, Register, compilerTemporary, floatCompilerTemporary, temporary as temporaryRegisters, floatTemporary as floatTemporaryRegisters, arguments as argumentRegisters, floatArguments as floatArgumentRegisters, reservedCompilerTemporary
 from compoundTypes import ObjectType, ClassSelfReferenceType, InstanceType
-from IntermediateCodeTokens import STATIC_POINTER, STACK_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR,PRINT_ANY, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT, INT_TO_STR, NOT, REGISTER_FREE, GHOST_REGISTER_FREE, FUNCTION, END_FUNCTION, GET_ARG, RETURN, CALL, RETURN_VAL, PARAM, FLOAT_TO_STR, STORE_CONST, CONST_POINT_CHAR, MALLOC
+from IntermediateCodeTokens import STATIC_POINTER, STACK_POINTER, STORE, PRINT_INT, PRINT_FLOAT, PRINT_STR,PRINT_ANY, PLUS, MINUS, MULTIPLY, DIVIDE, MOD, ASSIGN, NEG, EQUAL, NOT_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL, GOTO, LABEL, STRICT_ASSIGN, CONCAT, INT_TO_STR, NOT, REGISTER_FREE, GHOST_REGISTER_FREE, FUNCTION, END_FUNCTION, GET_ARG, RETURN, CALL, RETURN_VAL, PARAM, FLOAT_TO_STR, STORE_CONST, CONST_POINT_CHAR, MALLOC, INPUT_STRING
 from IntermediateCodeInstruction import SingleInstruction, ConditionalInstruction
 from primitiveTypes import FloatType, IntType, StringType, BoolType, NilType
 from utils.decimalToIEEE754 import decimal_to_ieee754
@@ -617,6 +617,10 @@ class AssemblyGenerator:
       
       elif instruction.operator == MALLOC:
         self.translateMallocInstruction(instruction)
+        return
+      
+      elif instruction.operator == INPUT_STRING:
+        self.translateInputStringInstruction(instruction)
         return
 
     elif isinstance(instruction, ConditionalInstruction):
@@ -2283,3 +2287,24 @@ class AssemblyGenerator:
     address = self.createHeapMemory(size + 4, destination)
     
     self.saveTypeInHeapMemory(objectInstanceId, address)
+    
+  
+  def translateInputStringInstruction(self, instruction):
+    
+    destination = instruction.result
+    size = int(instruction.arg1)
+    
+    # Reservar memoria en heap. +2 para guardar el tipo y null char
+    address = self.createHeapMemory(size + 2, destination)
+    
+    # Guardar tipo
+    self.saveTypeInHeapMemory(stringId, address)
+    
+    # Mover address a registro seguro
+    self.addAssemblyCode(f"move {compilerTemporary[0]}, {address}")
+    
+    # Syscall para leer string
+    self.addAssemblyCode(f"li $v0, 8  # Leer string")
+    self.addAssemblyCode(f"la $a0 1({compilerTemporary[0]})") # 1 para saltar tipo
+    self.addAssemblyCode(f"li $a1, {size + 1}  # Tamaño máximo de string")
+    self.addAssemblyCode("syscall")
