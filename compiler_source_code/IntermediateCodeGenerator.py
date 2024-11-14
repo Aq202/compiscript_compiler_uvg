@@ -132,6 +132,11 @@ class IntermediateCodeGenerator():
     ctx.code = self.getChildrenCode(ctx)
     
     expressionNode = ctx.expression()
+    expressionAddr = expressionNode.addr if expressionNode is not None else None
+    
+    # Validar que la variable guarde un valor válido (no funciones clases, etc)
+    if expressionAddr != None and not isinstance(expressionAddr, ObjectType):
+      return
     
     # Asignar un offset a la variable
     scope = self.symbolTable.currentScope
@@ -655,6 +660,11 @@ class IntermediateCodeGenerator():
     
     if objectDef is not None:
       # Si es una asignación a una variable
+      
+      # Verificar que el valor a asignar sea un ObjectType (único tipo guardable)
+      if not isinstance(valueAddr, ObjectType):
+        return      
+      
       objectDefCopy = objectDef.copy() # Copia de ObjectType() para preservar el tipo
       operator = STRICT_ASSIGN if isExecutionAmbiguous else ASSIGN
       ctx.code.concat(SingleInstruction(result=objectDefCopy, arg1=valueAddr, operator=operator))
