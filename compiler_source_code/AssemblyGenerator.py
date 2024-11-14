@@ -2156,18 +2156,22 @@ class AssemblyGenerator:
     
     # Hacer pop de frame pointer anterior
     self.addAssemblyCode(f"lw $fp, 0($sp)  # Hacer pop de frame pointer anterior")
+    self.addAssemblyCode(f"sw $zero, 0($sp)") # Limpiar valor en memoria
     self.addAssemblyCode(f"addu $sp, $sp, 4")
     
     # Hacer pop de function level
+    self.addAssemblyCode(f"sw $zero, 0($sp)") # Limpiar valor en memoria
     self.addAssemblyCode(f"addu $sp, $sp, 4  # Hacer pop de function level")
     
     # Hacer pop de retorno
     self.addAssemblyCode(f"lw $ra, 0($sp)  # Hacer pop de dirección de retorno")
+    self.addAssemblyCode(f"sw $zero, 0($sp)") # Limpiar valor en memoria
     self.addAssemblyCode(f"addu $sp, $sp, 4")
       
     
     # Hacer pop de argumentos
     if numParams > 0:
+      self.addAssemblyCode(f"sw $zero, 0($sp)") # Limpiar valor en memoria
       self.addAssemblyCode(f"addu $sp, $sp, {numParams * 4} # Hacer pop de argumentos")
     
     # Retornar a dirección de retorno
