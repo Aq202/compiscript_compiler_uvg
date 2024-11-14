@@ -2167,9 +2167,8 @@ class AssemblyGenerator:
       
     
     # Hacer pop de argumentos
-    if numParams > 4:
-      storedParams = numParams - 4
-      self.addAssemblyCode(f"addu $sp, $sp, {storedParams * 4} # Hacer pop de argumentos")
+    if numParams > 0:
+      self.addAssemblyCode(f"addu $sp, $sp, {numParams * 4} # Hacer pop de argumentos")
     
     # Retornar a dirección de retorno
     self.addAssemblyCode(f"jr $ra")    
