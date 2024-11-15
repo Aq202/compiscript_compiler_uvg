@@ -152,9 +152,12 @@ class IntermediateCodeGenerator():
     
     objectDefCopy = objectDef.copy() # Copia de ObjectType() para preservar el tipo
     
+    # Se cambia el tipo a Nil, pues se está creando. Posteriormente se le asignará un valor con
+    # la operación assignment.
+    objectDefCopy.setType(NilType())
+    
     if expressionNode is None:
       # Asignar NIL
-      objectDefCopy.setType(IntType())
       ctx.code.concat(SingleInstruction(result=objectDefCopy, arg1=Value("0", IntType()), operator=STORE, operatorFirst=True))
     
     else:
@@ -640,9 +643,13 @@ class IntermediateCodeGenerator():
   def enterAssignment(self, ctx: CompiscriptParser.AssignmentContext):
     if not self.continueCodeGeneration(): return
 
-  def exitAssignment(self, ctx: CompiscriptParser.AssignmentContext, objectDef: ObjectType = None):
+  def exitAssignment(self, ctx: CompiscriptParser.AssignmentContext, objectDef: ObjectType = None, propertyType = None):
     """
-    Si objectDef no es None, se trata de una asignación a una variable
+    Si objectDef no es None, se trata de una asignación a una variable. El tipo de la variable
+    debe ser el previo a realizar la asignación.
+    
+    PropertyType es el tipo de la propiedad a asignar, si es una asignación a un atributo. El tipo
+    de la propiedad también debe ser el previo a realizar la asignación.
     """
     if not self.continueCodeGeneration(): return
     ctx.code = self.getChildrenCode(ctx)
@@ -689,7 +696,6 @@ class IntermediateCodeGenerator():
         
         # Realizar offset relativo a la dirección de memoria del objeto
         propertyIndex = classSelfReference.getPropertyIndex(identifier)
-        propertyType = classSelfReference.getProperty(identifier)
         propertyPosition = Offset(thisTemp, propertyIndex * MEM_ADDR_SIZE, propertyType)
         
         # Asignar valor a propiedad en CI
@@ -703,7 +709,6 @@ class IntermediateCodeGenerator():
         
         # Realizar offset relativo a la dirección de memoria del objeto
         propertyIndex = instanceType.getPropertyIndex(identifier)
-        propertyType = instanceType.getProperty(identifier)
         propertyPosition = Offset(instanceAddr, propertyIndex * MEM_ADDR_SIZE, propertyType)
         
         # Asignar valor a propiedad en CI

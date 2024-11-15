@@ -390,7 +390,6 @@ class AssemblyGenerator:
     elif isinstance(object, Offset):
       # Se está haciendo un desplazamiento sobre un objeto en el heap
       base = object.base
-      offset = object.offset
       
       self.addAssemblyCode("nop # Obtener base pointer de objeto Offset")
       # Obtiene la dirección base. 
@@ -414,7 +413,7 @@ class AssemblyGenerator:
       return object.offset if object.baseType != STACK_POINTER else (object.offset * -1 - 4)
     
     if isinstance(object, Offset):
-      return object.offset + 4 # Se suma 4 para omitir el byte de tipo
+      return object.offset + 4
     
     raise Exception("No se puede obtener el offset de este objeto.", str(object))
   
@@ -514,11 +513,16 @@ class AssemblyGenerator:
     """
     Guarda el tipo en el primer byte de la dirección de memoria (en el heap).
     
+    HeapAddress No puede estar en compilerTemporary[0].
+    
     Modifica el valor de compilerTemporary[0].
     """
     
     if typeId not in (intId, floatId, stringId, objectInstanceId):
       raise Exception("Tipo no soportado.", typeId)
+    
+    if heapAddress == compilerTemporary[0]:
+      raise Exception(f"heapAddress no puede ser el registro compilerTemporary[0] {compilerTemporary[0]}, registro dado: ", heapAddress)
     
     self.addAssemblyCode(f"li {compilerTemporary[0]}, {typeId} # Guardar tipo en heap")
     self.addAssemblyCode(f"sb {compilerTemporary[0]}, 0({heapAddress})")
@@ -532,7 +536,15 @@ class AssemblyGenerator:
     """
     self.addAssemblyCode(f"lw {register}, {self.getOffset(object)}({self.getBasePointer(object)})")
     self.addAssemblyCode(f"lb {register}, 0({register})")
+  
+  def getHeapMemory(self, object, register):
+    """
+    Obtiene la dirección de memoria en el heap de un objeto.
+    Lo guarda en el registro register.
     
+    Modifica el registro dado en register.
+    """
+    self.addAssemblyCode(f"lw {register}, {self.getOffset(object)}({self.getBasePointer(object)})")
     
   def translateInstruction(self, instruction):
     
@@ -1117,26 +1129,35 @@ class AssemblyGenerator:
     value = instruction.arg1
     result = instruction.result
     
+    isValueAny = not (value.strictEqualsType((IntType, NilType, BoolType)) or value.strictEqualsType(FloatType) or value.strictEqualsType(StringType) or value.strictEqualsType((ClassSelfReferenceType, InstanceType)))
+    isResultAny = not (result.strictEqualsType((IntType, NilType, BoolType)) or result.strictEqualsType(FloatType) or result.strictEqualsType(StringType) or result.strictEqualsType((ClassSelfReferenceType, InstanceType)))
     
-    
-    isValueAny = not (value.strictEqualsType((IntType, NilType, BoolType)) or value.strictEqualsType(FloatType) or value.strictEqualsType(StringType))
-    isResultAny = not (result.strictEqualsType((IntType, NilType, BoolType)) or result.strictEqualsType(FloatType) or result.strictEqualsType(StringType))
-    
-    if value.strictEqualsType(StringType):
-      # Si es string, solo se debe mover la dirección de memoria
+    if value.strictEqualsType(StringType) or value.strictEqualsType((ClassSelfReferenceType, InstanceType)):
+      # Si es string u objeto, solo se debe mover la dirección de memoria
       valueReg = self.getValueInRegister(value)
       self.saveRegisterValueInMemory(register=valueReg, object=result, typeId=stringId)
     
     elif not isValueAny and not isResultAny:
       # Ambos son de tipo conocido
       
-      # Si result es de tipo string, reservar nuevo espacio en memoria
-      if result.strictEqualsType(StringType):
+      # Si result no es de tipo number
+      # En este punto ya se sabe que value es number, se debe reservar espacio para result number
+      if not result.strictEqualsType((IntType, BoolType, NilType)) and not result.strictEqualsType(FloatType):
         heapMemory = self.createHeapMemory(numberSize + 4, result)
-        self.saveTypeInHeapMemory(intId, heapMemory)
-        
-      valueReg = self.getValueInRegister(value)
-      self.saveRegisterValueInMemory(register=valueReg, object=result)
+        typeId = floatId if value.strictEqualsType(FloatType) else intId
+        self.saveTypeInHeapMemory(typeId, heapMemory)
+      
+      valueTypeId = floatId if value.strictEqualsType(FloatType) else intId
+      resultTypeId = floatId if result.strictEqualsType(FloatType) else intId
+      
+      # Guardar valor en memoria
+      valueReg = self.getValueInRegister(value, typeId=valueTypeId)
+      self.saveRegisterValueInMemory(register=valueReg, object=result, typeId=valueTypeId)
+      
+      # Si result es number, y tienen tipos distintos, sobreescribir tipo (int o float)
+      if valueTypeId != resultTypeId:
+        self.getHeapMemory(result, compilerTemporary[1])
+        self.saveTypeInHeapMemory(valueTypeId, compilerTemporary[1])
     
     elif isValueAny or isResultAny:
       # Se debe realizar una verificación del tipo en tiempo de ejecución

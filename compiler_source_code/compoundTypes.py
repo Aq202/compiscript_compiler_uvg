@@ -214,6 +214,8 @@ class ClassType(DataType):
       self.methods[name].addOverload(functionObj)
       
   def getProperty(self, name):
+    if name not in self.properties:
+      return NilType()
     return self.properties.get(name)["type"]
   
   def getPropertyIndex(self, name):
@@ -328,6 +330,8 @@ class InstanceType(DataType):
       self.localMethods[name].addOverload(functionObj)
       
   def getProperty(self, name):
+    if name not in self.localProperties:
+      return NilType()
     return self.localProperties.get(name)["type"]
   
   def getMethod(self, name):

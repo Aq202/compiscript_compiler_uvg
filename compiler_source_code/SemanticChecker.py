@@ -640,6 +640,7 @@ class SemanticChecker(CompiscriptListener):
         elif receiver.strictEqualsType((ClassSelfReferenceType, InstanceType)): # Es una propiedad
           
           classRef = receiverType.classType
+          previousPropertyType = classRef.getProperty(identifier)
           if receiver.strictEqualsType(ClassSelfReferenceType) and scope.isInsideConstructor():
             
             # Dentro del constructor, se asigna el tipo de las props por primera vez
@@ -660,7 +661,7 @@ class SemanticChecker(CompiscriptListener):
           
         
         ctx.type = AnyType()
-        return self.intermediateCodeGenerator.exitAssignment(ctx)
+        return self.intermediateCodeGenerator.exitAssignment(ctx, propertyType=previousPropertyType)
       
       else:
         # Es una asignación a variable ya declarada
@@ -684,19 +685,19 @@ class SemanticChecker(CompiscriptListener):
           return
         
         # Actualizar el tipo de la variable
-        objectWithUpdatedType = None
+        objectWithPreviousType = None
         if not isLocal:
           # Si no es local, se crea (o modifica) una copia local del objeto heredado
-          objectWithUpdatedType = self.symbolTable.currentScope.modifyInheritedObjectType(variableRef, assignmentValueType)
+          self.symbolTable.currentScope.modifyInheritedObjectType(variableRef, assignmentValueType)
+          objectWithPreviousType = variableRef # El tipo no se modifica
           
         else:
           # Si es local, se modifica el objeto local
-
+          objectWithPreviousType = variableRef.copy() # Se crea una copia del objeto con el tipo anterior
           variableRef.setType(assignmentValueType)
-          objectWithUpdatedType = variableRef
 
         ctx.type = assignmentValueType
-      return self.intermediateCodeGenerator.exitAssignment(ctx, objectDef=objectWithUpdatedType)
+      return self.intermediateCodeGenerator.exitAssignment(ctx, objectDef=objectWithPreviousType)
 
     def enterLogic_or(self, ctx: CompiscriptParser.Logic_orContext):
       return super().enterLogic_or(ctx)
