@@ -165,20 +165,21 @@ class AssemblyGenerator:
     """
     Guarda el valor de un registro en memoria, en la ubicación correspondiente al objeto.
     Si es un number guarda el valor del numero en el heap, es decir, objectStatic->heapAddress->storeValue.
+    Determina la forma de guardar según el tipo de object o el typeId. Da prioridad al typeId.
     
     Modifica valores de $a0, $a1, $a2, $v0, $f12, reservedCompilerTemporary[0].
     """
     
-    if object.strictEqualsType((IntType, BoolType, NilType)) or typeId == intId:
+    if (typeId == None and object.strictEqualsType((IntType, BoolType, NilType))) or typeId == intId:
       self.saveIntRegisterValueInMemory(register, object)
       
-    elif object.strictEqualsType(FloatType) or typeId == floatId:
+    elif (typeId == None and object.strictEqualsType(FloatType)) or typeId == floatId:
       self.saveFloatRegisterValueInMemory(register, object)
       
-    elif object.strictEqualsType(StringType) or typeId == stringId:
+    elif (typeId == None and object.strictEqualsType(StringType)) or typeId == stringId:
       self.saveHeapAddressInMemory(register, object)
       
-    elif object.strictEqualsType((ClassSelfReferenceType, InstanceType)) or typeId == objectInstanceId:
+    elif (typeId == None and object.strictEqualsType((ClassSelfReferenceType, InstanceType))) or typeId == objectInstanceId:
       # Guardar dirección de instancia en memoria estática
       self.saveHeapAddressInMemory(register, object)
       
@@ -393,6 +394,7 @@ class AssemblyGenerator:
   def getValueInRegister(self, value, ignoreRegisters=[], typeId = None, updateDescriptors=True, ignorePreviousRegister=False):
     """
     Obtener el valor de una variable en un registro.
+    Determina la forma de obtener según el tipo de value o el typeId. Da prioridad al typeId.
     @param value: El valor que se quiere obtener.
     @param ignoreRegisters: Registros que no se deben utilizar.
     @param typeId: Tipo de dato que se quiere obtener. Opcional. Sirve para especificar tipo.
@@ -405,7 +407,7 @@ class AssemblyGenerator:
     if ignorePreviousRegister or not isinstance(address, Register):
       
       # El valor no está en un registro, cargar de memoria
-      if value.strictEqualsType(FloatType) or typeId == floatId:
+      if (typeId == None and value.strictEqualsType(FloatType)) or typeId == floatId:
         
         # Tratar como float
         
@@ -415,8 +417,8 @@ class AssemblyGenerator:
         # Cargar valor final (offset de 4 para omitir el byte de tipo)
         self.addAssemblyCode(f"l.s {address}, 4({compilerTemporary[0]})")
         
-      elif (value.strictEqualsType(StringType) or typeId == stringId) or \
-            (value.strictEqualsType((ClassSelfReferenceType, InstanceType)) or typeId == objectInstanceId):
+      elif ((typeId == None and value.strictEqualsType(StringType)) or typeId == stringId) or \
+            ((typeId == None and value.strictEqualsType((ClassSelfReferenceType, InstanceType))) or typeId == objectInstanceId):
               
         # Tratar como string u object. Solo guardar inicio de bloque de mem.
         
@@ -424,7 +426,7 @@ class AssemblyGenerator:
         # Cargar dirrección del bloque de memoria en el heap
         self.addAssemblyCode(f"lw {address}, {self.getOffset(value)}({self.getBasePointer(value)}) # cargar addr de heap str {value}")
         
-      elif value.strictEqualsType((IntType, BoolType, NilType)) or typeId == intId:
+      elif (typeId == None and value.strictEqualsType((IntType, BoolType, NilType))) or typeId == intId:
         
         # Tratar com int
         
