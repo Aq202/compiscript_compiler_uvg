@@ -684,17 +684,19 @@ class SemanticChecker(CompiscriptListener):
           return
         
         # Actualizar el tipo de la variable
+        objectWithUpdatedType = None
         if not isLocal:
           # Si no es local, se crea (o modifica) una copia local del objeto heredado
-          self.symbolTable.currentScope.modifyInheritedObjectType(variableRef, assignmentValueType)
+          objectWithUpdatedType = self.symbolTable.currentScope.modifyInheritedObjectType(variableRef, assignmentValueType)
           
         else:
           # Si es local, se modifica el objeto local
 
           variableRef.setType(assignmentValueType)
+          objectWithUpdatedType = variableRef
 
         ctx.type = assignmentValueType
-      return self.intermediateCodeGenerator.exitAssignment(ctx, objectDef=variableRef)
+      return self.intermediateCodeGenerator.exitAssignment(ctx, objectDef=objectWithUpdatedType)
 
     def enterLogic_or(self, ctx: CompiscriptParser.Logic_orContext):
       return super().enterLogic_or(ctx)
@@ -987,9 +989,16 @@ class SemanticChecker(CompiscriptListener):
             self.addSemanticError(error)
             ctx.type = error
             
-          # Si uno de los factores es float o any, cambiar a tipo float
-          if childType.equalsType(FloatType) and not childType.equalsType(CompilerError):
+          # Si uno de los factores es any, el resultado es float o string
+          if not childType.strictEqualsType(FloatType) and not childType.strictEqualsType(IntType) and \
+              not childType.equalsType(CompilerError):
+            ctx.type = UnionType(FloatType(), IntType())
+            
+          elif childType.equalsType(FloatType) and ctx.type.strictEqualsType(IntType) and \
+              not childType.equalsType(CompilerError):
+            # Si alguno es float y el tipo era int, resultado es float
             ctx.type = FloatType()
+            
         else:
           # Terminales
           if child.getText() == "/":

@@ -117,15 +117,20 @@ class Scope:
   def modifyInheritedObjectType(self, originalObject, newType):
     """
     Crea una copia de de un objeto heredado en un scope hijo para modificar su tipo.
+    @param originalObject: ObjectType. Objeto de scope superior a modificar como una copia.
+    @param newType: Type. Nuevo tipo del objeto.
+    @return ObjectType. Objeto modificado
     """
     if originalObject.name in self.objectInheritances:
       self.objectInheritances[originalObject.name].setType(newType)
+      return self.objectInheritances[originalObject.name]
     else:
       copy = deepcopy(originalObject)
       copy.setType(newType)
       copy.setReference(originalObject)
 
       self.objectInheritances[originalObject.name] = copy
+      return copy
 
   def searchElement(self, name, searchInParentScopes = True, searchInParentClasses = True, searchTemporaries = False):
     """
