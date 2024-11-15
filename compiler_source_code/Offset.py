@@ -30,3 +30,9 @@ class Offset(DataType):
   
   def __str__(self) -> str:
     return f"Offset({str(self.base)},{self.offset})"
+  
+  def __eq__(self, obj) -> bool:
+    return isinstance(obj, Offset) and obj.base == self.base and obj.offset == self.offset
+  
+  def __hash__(self) -> int:
+    return hash((hash(self.base), self.offset))
