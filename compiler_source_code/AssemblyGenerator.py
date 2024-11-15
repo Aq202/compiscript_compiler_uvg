@@ -34,6 +34,7 @@ class AssemblyGenerator:
     
     # Nombre de funciones del compilador
     self.autoNumberMemoryAlloc = f"auto_number_memory_alloc_{getUniqueId()}"
+    self.getFrameBasePointer = f"get_frame_base_pointer_{getUniqueId()}"
     
     self.generateInitCode()
     
@@ -49,6 +50,9 @@ class AssemblyGenerator:
     
     # Crear direcciones de memoria en el heap para almacenar números si no existen
     self.addAutoNumberMemoryAllocFunction()
+    
+    # Crear función que obtiene el base pointer dentro del frame de una función
+    self.getFrameBasePointerFunction()
     
     self.assemblyCode += self.functionsCode
   
@@ -103,7 +107,50 @@ class AssemblyGenerator:
     # Return
     self.addAssemblyCode(f"jr $ra")
     self.addAssemblyCode(f"nop")
+  
+  def getFrameBasePointerFunction(self):
+    """
+    Agregar función en el compilador que obtienen el base pointer dentro del frame de una función.
+    Se encarga de verificar que el objeto que se está buscando se encuentre en el frame actual.
+    Si no, busca en framse superiores hasta que el function level coincide.
     
+    reservedCompilerTemporary[0]: functionLevel a buscar
+    return: reservedCompilerTemporary[1]: base pointer ($fp) del frame que coincide con el functionLevel.
+    
+    Modifica: reservedCompilerTemporary[0], reservedCompilerTemporary[1], reservedCompilerTemporary[2].
+    """
+    
+    # Verificar si el functionLevel actual es el correcto
+    # $fp anterior = $fp actual
+    # functionLevel = $fp + 4
+        
+    equalFunctionLevelLabel = f"equal_function_level_{getUniqueId()}"
+    repeatFunctionLevelCheckLabel = f"repeat_function_level_check_{getUniqueId()}"
+    
+    self.addAssemblyCode(f"{self.getFrameBasePointer}:")
+    
+    # Mover $fp como punto de inicio actual
+    self.addAssemblyCode(f"move {reservedCompilerTemporary[1]}, $fp # Mover $fp como punto de inicio actual")
+    
+    self.addAssemblyCode(f"{repeatFunctionLevelCheckLabel}:")
+    
+    # Cargar functionLevel actual
+    self.addAssemblyCode(f"lw {reservedCompilerTemporary[2]}, 4({reservedCompilerTemporary[1]}) # Cargar functionLevel actual")
+    
+    # Verificar si son iguales
+    self.addAssemblyCode(f"beq {reservedCompilerTemporary[0]}, {reservedCompilerTemporary[2]}, {equalFunctionLevelLabel} # Verificar si son iguales")
+    
+    # Si no son iguales, cargar $fp de la función anterior y repetir
+    self.addAssemblyCode(f"lw {reservedCompilerTemporary[1]}, 0({reservedCompilerTemporary[1]}) # Cargar $fp de la función anterior")
+    self.addAssemblyCode(f"j {repeatFunctionLevelCheckLabel}")
+    
+    self.addAssemblyCode(f"{equalFunctionLevelLabel}:")
+    
+    # Se encontró el functionLevel correcto, retornarlo como base pointer
+    self.addAssemblyCode(f"jr $ra")          
+    return reservedCompilerTemporary[1]
+      
+      
   def saveIntRegisterValueInMemory(self, register, object):
     """
     Guarda el valor de un registro en memoria, en la ubicación correspondiente al objeto.
@@ -331,33 +378,13 @@ class AssemblyGenerator:
         # functionLevel = $fp + 4
         
         currentFunctionLevel = object.getFunctionLevel()
-        
-        equalFunctionLevelLabel = f"equal_function_level_{getUniqueId()}"
-        repeatFunctionLevelCheckLabel = f"repeat_function_level_check_{getUniqueId()}"
-        
-        self.addAssemblyCode("nop # Obtener base pointer")
-        
         # Cargar functionLevel a buscar
         self.addAssemblyCode(f"li {reservedCompilerTemporary[0]}, {currentFunctionLevel} # Cargar functionLevel a buscar")
         
-        # Mover $fp como punto de inicio actual
-        self.addAssemblyCode(f"move {reservedCompilerTemporary[1]}, $fp # Mover $fp como punto de inicio actual")
+        # Llamar a función que obtiene el base pointer dentro del frame de una función
+        self.addAssemblyCode(f"jal {self.getFrameBasePointer}")
         
-        self.addAssemblyCode(f"{repeatFunctionLevelCheckLabel}:")
-        
-        # Cargar functionLevel actual
-        self.addAssemblyCode(f"lw {reservedCompilerTemporary[2]}, 4({reservedCompilerTemporary[1]}) # Cargar functionLevel actual")
-        
-        # Verificar si son iguales
-        self.addAssemblyCode(f"beq {reservedCompilerTemporary[0]}, {reservedCompilerTemporary[2]}, {equalFunctionLevelLabel} # Verificar si son iguales")
-        
-        # Si no son iguales, cargar $fp de la función anterior y repetir
-        self.addAssemblyCode(f"lw {reservedCompilerTemporary[1]}, 0({reservedCompilerTemporary[1]}) # Cargar $fp de la función anterior")
-        self.addAssemblyCode(f"j {repeatFunctionLevelCheckLabel}")
-        
-        self.addAssemblyCode(f"{equalFunctionLevelLabel}:")
-        
-        # Se encontró el functionLevel correcto, retornarlo como base pointer          
+        # La función retorna el base pointer del frame que coincide con el functionLevel en este reg        
         return reservedCompilerTemporary[1]
     
     elif isinstance(object, Offset):
