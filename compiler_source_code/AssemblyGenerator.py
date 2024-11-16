@@ -1222,7 +1222,7 @@ class AssemblyGenerator:
       if isValueAny or value.strictEqualsType((IntType, NilType, BoolType)):
         # Guardar valor como int
         valueReg = self.getValueInRegister(value, typeId=intId, updateDescriptors=False, ignorePreviousRegister=True)
-        self.saveRegisterValueInMemory(register=valueReg, object=result)
+        self.saveRegisterValueInMemory(register=valueReg, object=result, typeId=intId)
         if isValueAny: 
           self.addAssemblyCode(f"j {endAssignmentLabel}")
       
