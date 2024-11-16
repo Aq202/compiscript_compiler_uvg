@@ -4,8 +4,8 @@ sys.path.append("compiler_source_code")
 from PyQt5.QtWidgets import QWidget, QApplication, QFileDialog
 from PyQt5.uic import loadUi
 from Editor import Editor
-from compiler_source_code.semanticAnalyzer import executeSemanticAnalyzer
-
+from compiler_source_code.compiler import executeCompilation
+from compiler_source_code.utils.copyToClipboard import copyToClipboard
 
 class EditorTab(QWidget):
 
@@ -76,15 +76,23 @@ class EditorTab(QWidget):
     
     self.consoleLog(">>\n")
     
-    self.consoleLog("Ejecutando análisis del programa...")
+    self.consoleLog("Compilando programa...")
     
-    hasErrors, errors, code = executeSemanticAnalyzer(filePath)
+    hasErrors, errors, assemblyCode = executeCompilation(filePath)
     
     if not hasErrors:
         self.consoleLog("\nEl programa no contiene errores.")
+
+        # Copiar código ensamblador al portapapeles
+        stringCode = "\n".join(assemblyCode)
+        copyToClipboard(stringCode)   
+        self.consoleLog("\nCódigo ensamblador copiado al portapapeles.")
         
-        self.consoleLog("\nCódigo intermedio generado:")
-        self.consoleLog(code)        
+        # Guardar en archivo
+        file, _type = QFileDialog.getSaveFileName(self, "Guardar archivo assembler", "", "Mars (*.asm)",)
+        if len(file) > 0:
+            with open(file, mode="w", encoding="utf-8") as file:
+                file.write(stringCode)
         
     else:
         self.consoleLog("\nErrores encontrados:")

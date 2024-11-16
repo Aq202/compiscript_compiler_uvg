@@ -3,13 +3,15 @@ from antlr.CompiscriptLexer import CompiscriptLexer
 from antlr.CompiscriptParser import CompiscriptParser
 from SemanticChecker import SemanticChecker
 from ErrorListener import LexerErrorListener, ParserErrorListener
+from AssemblyGenerator import AssemblyGenerator
 
-def executeSemanticAnalyzer(filePath):
+def executeCompilation(filePath):
   """
-  Ejecuta el análisis léxico, sintáctico y semántico de un código fuente.
+  Ejecuta el análisis léxico, sintáctico y semántico de un código fuente, posteriormente genera
+  el código intermedio y lo traduce a código ensamblador.
   @param filePath: str - Ruta del archivo a analizar.
-  @return has_errors, errors, intermediate_code: bool, list, str - Indica si hubo errores,
-  lista de errores y código intermedio generado.
+  @return has_errors, errors, assembly_code: bool, list, str - Indica si hubo errores,
+  lista de errores y código ensamblador (str list).
   """
   try:
     input_stream = FileStream(filePath, encoding='utf-8')
@@ -39,7 +41,13 @@ def executeSemanticAnalyzer(filePath):
     # retornar errores
     errors = lexerErrorListener.errors + parserErrorListener.errors + semantic_checker.errors
     
-    return len(errors) > 0, errors, semantic_checker.getProgramCode()
+    if len(errors) > 0:
+      return True, errors, None
+    else:
+      # Realizar traducción a código ensamblador
+      intermediateCode = semantic_checker.getProgramCode()
+      assemblyGenerator = AssemblyGenerator(intermediateCode)
+      return False, [], assemblyGenerator.getCode()
 
   except Exception as e:
     return True, [str(e)], None
