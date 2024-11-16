@@ -1,10 +1,7 @@
-import sys
 from antlr4 import *
 from antlr.CompiscriptLexer import CompiscriptLexer
 from antlr.CompiscriptParser import CompiscriptParser
-from antlr.CompiscriptListener import CompiscriptListener
 from anytree import Node, RenderTree, AsciiStyle
-from anytree.exporter import DotExporter
 from SemanticChecker import SemanticChecker
 from ErrorListener import LexerErrorListener, ParserErrorListener
 from AssemblyGenerator import AssemblyGenerator
@@ -61,10 +58,13 @@ def main():
         code = semantic_checker.getProgramCode()
         print("\n\nCódigo intermedio:\n", "\n".join([str(line) for line in code]), sep="")
         
+        print("\n\nIniciando traducción...")
         assemblyGenerator = AssemblyGenerator(code)
         stringCode = "\n".join(assemblyGenerator.getCode())
-        print("\n\nCódigo ensamblador:\n", stringCode, sep="")
+        
         copyToClipboard(stringCode)
+        
+        print("Código ensamblador copiado al portapapeles")
 
 if __name__ == '__main__':
     main()

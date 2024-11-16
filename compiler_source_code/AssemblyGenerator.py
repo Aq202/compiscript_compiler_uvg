@@ -38,7 +38,6 @@ class AssemblyGenerator:
     
     self.generateInitCode()
     
-    print("\n\n Iniciando traducción...\n\n")
     for instruction in code:
       self.addAssemblyCode(f"nop # INSTRUCTION {instruction}")
       self.translateInstruction(instruction)
@@ -99,14 +98,12 @@ class AssemblyGenerator:
     
     # Return. V0 ya contiene la dirección del bloque creado en el heap
     self.addAssemblyCode(f"jr $ra")
-    self.addAssemblyCode(f"nop")
     
     self.addAssemblyCode(f"{skipMemoryAllocLabel}:")
     self.addAssemblyCode(f"move $v0, $a0")
     
     # Return
     self.addAssemblyCode(f"jr $ra")
-    self.addAssemblyCode(f"nop")
   
   def getFrameBasePointerFunction(self):
     """
@@ -391,7 +388,7 @@ class AssemblyGenerator:
       # Se está haciendo un desplazamiento sobre un objeto en el heap
       base = object.base
       
-      self.addAssemblyCode("nop # Obtener base pointer de objeto Offset")
+      self.addAssemblyCode("# Obtener base pointer de objeto Offset")
       # Obtiene la dirección base. 
       # Se guarda en el registro el inicio de la dirección del heap sobre la cuál se hace el desplazamiento
       self.addAssemblyCode(f"lw {reservedCompilerTemporary[0]}, {self.getOffset(base)}({self.getBasePointer(base)})")
@@ -1001,7 +998,7 @@ class AssemblyGenerator:
     arithFloatLabel = f"arith_float_{getUniqueId()}"
     arithEndLabel = f"arith_end_{getUniqueId()}"
     
-    self.addAssemblyCode("nop # Inicio de operación aritmética any")
+    self.addAssemblyCode("# Inicio de operación aritmética any")
     
     # Verificar si alguno de los valores es float
     self.addAssemblyCode(f"li {tempReg}, {floatId}")
@@ -1162,7 +1159,7 @@ class AssemblyGenerator:
     elif isValueAny or isResultAny:
       # Se debe realizar una verificación del tipo en tiempo de ejecución
       
-      self.addAssemblyCode(f"nop # Asignación de tipo any")
+      self.addAssemblyCode(f"# Asignación de tipo any")
       
       # Obtener el tipo de value
       self.addAssemblyCode(f"lw {compilerTemporary[0]}, {self.getOffset(value)}({self.getBasePointer(value)})")
@@ -1492,7 +1489,7 @@ class AssemblyGenerator:
     tempReg2 = self.getRegister(objectToSave=None, ignoreRegisters=[tempReg])
     
     
-    self.addAssemblyCode(f"nop # Comparación de tipo any")
+    self.addAssemblyCode(f"# Comparación de tipo any")
     
     # Obtener tipos
     self.getTypeFromHeapMemory(object=values[0],register=compilerTemporary[0])
@@ -1668,7 +1665,7 @@ class AssemblyGenerator:
     wordCopyReg = tempReg
     
     # Contar tamaño de strings
-    self.addAssemblyCode(f"nop # translateConcatOperation: concatenar dos strings {stringsReg[0]} y {stringsReg[1]}")
+    self.addAssemblyCode(f"# translateConcatOperation: concatenar dos strings {stringsReg[0]} y {stringsReg[1]}")
     self.addAssemblyCode(f"li {compilerTemporary[0]}, 0   # Contador de tamaño de ambos strings")
     for i in range(2):
       strLenLoopLabel = f"str_len_loop{i+1}_{getUniqueId()}"
@@ -2096,7 +2093,6 @@ class AssemblyGenerator:
     
     # Concatenar parte entera y punto decimal
     # Cargar punto decimal
-    self.addAssemblyCode(f"nop # antes de cargar punto {self.constants[CONST_POINT_CHAR]}")
     pointCharReg = self.getValueInRegister(self.constants[CONST_POINT_CHAR], ignoreRegisters=[tempStringResultReg, intTempReg, decimalTempReg, resultStringReg], updateDescriptors=False)
     self.concatOperation(tempStringResultReg, intTempReg, pointCharReg, resultStringReg)
     
