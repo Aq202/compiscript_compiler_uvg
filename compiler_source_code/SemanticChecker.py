@@ -912,7 +912,7 @@ class SemanticChecker(CompiscriptListener):
           else:
             
             # Determinar que tipo es el compatible (o si son ambos)
-            if childType.strictEqualsType(NumberType):
+            if childType.strictEqualsType((NumberType, NilType)):
               # Si algún número es float, remover el tipo int
               if childType.equalsType(FloatType):
                 childTypes.discard(IntType)

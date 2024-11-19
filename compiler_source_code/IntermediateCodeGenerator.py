@@ -994,10 +994,10 @@ class IntermediateCodeGenerator():
       if firstOpType.strictEqualsType(StringType) or secondOpType.strictEqualsType(StringType):
         # Si alguno de los operandos es string, concatenar
         tempType = StringType()
-      elif firstOpType.strictEqualsType(FloatType) or secondOpType.strictEqualsType(FloatType):
+      elif firstOpType.strictEqualsType((NilType, FloatType)) or secondOpType.strictEqualsType((NilType, FloatType)):
         # si alguno de los operandos es float, resultado es float
         tempType = FloatType()
-      elif firstOpType.strictEqualsType(IntType) and secondOpType.strictEqualsType(IntType):
+      elif firstOpType.strictEqualsType((NilType, IntType)) and secondOpType.strictEqualsType((NilType, IntType)):
         # Si ambos son int, resultado es int
         tempType = IntType()
       else:
