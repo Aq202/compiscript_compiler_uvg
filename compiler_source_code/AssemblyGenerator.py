@@ -2197,8 +2197,17 @@ class AssemblyGenerator:
     # Al salir de una función se debe considerar que todos los registros fueron vaciados
     self.freeAllRegisters()
     
-    # Mover $sp a $fp
-    self.addAssemblyCode(f"move $sp, $fp")
+    # Mover $sp a $fp y colocar ceros en toda la memoria liberada
+    clearStackLoopLabel = f"clear_stack_loop_{getUniqueId()}"
+    clearStackEndLabel = f"clear_stack_end_{getUniqueId()}"
+    
+    self.addAssemblyCode(f"{clearStackLoopLabel}:")
+    self.addAssemblyCode(f"beq $sp, $fp, {clearStackEndLabel}  # Si $sp es igual a $fp, terminar clear loop")
+    self.addAssemblyCode(f"sw $zero, 0($sp)  # Limpiar valor en memoria")
+    self.addAssemblyCode(f"addu $sp, $sp, 4  # Avanzar en memoria")
+    self.addAssemblyCode(f"j {clearStackLoopLabel}")
+    
+    self.addAssemblyCode(f"{clearStackEndLabel}:")
     
     # Hacer pop de frame pointer anterior
     self.addAssemblyCode(f"lw $fp, 0($sp)  # Hacer pop de frame pointer anterior")
