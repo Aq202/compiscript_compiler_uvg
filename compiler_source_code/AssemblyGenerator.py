@@ -339,6 +339,8 @@ class AssemblyGenerator:
   
   def generateInitCode(self):
     
+    self.addAssemblyCode("# Código Compiscript compilado ")
+    self.addAssemblyCode("# Autor: Diego Morales Aquino")
     self.addAssemblyCode(".text")
     self.addAssemblyCode(".globl main")
     self.addAssemblyCode("main:")
